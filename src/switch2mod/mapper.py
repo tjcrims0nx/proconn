@@ -15,8 +15,13 @@ try:
     import vgamepad as vg
     from vgamepad import XUSB_BUTTON as XB
     HAS_VGAMEPAD = True
-except ImportError:
+    _VG_IMPORT_ERROR = None
+except Exception as _e:
+    # Broad on purpose: importing vgamepad connects to the ViGEmBus driver,
+    # which raises VIGEM_ERROR_BUS_NOT_FOUND (not ImportError) when the
+    # driver is missing. The app must survive that and show the hint.
     HAS_VGAMEPAD = False
+    _VG_IMPORT_ERROR = str(_e)
     vg = None  # type: ignore
     XB = None  # type: ignore
 
@@ -51,6 +56,7 @@ class ProToXInput:
                  self.joy.get_numaxes(), self.joy.get_numbuttons())
         self.pad = vg.VX360Gamepad()
         self.running = False
+        self.connected = True
         self.n_reports = 0
         self.smoother = Smoother(self.cfg.smoothing)
         self.cx_l = self.cy_l = self.cx_r = self.cy_r = 0.0

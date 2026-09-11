@@ -19,8 +19,13 @@ try:
     import vgamepad as vg
     from vgamepad import XUSB_BUTTON as XB
     HAS_VGAMEPAD = True
-except ImportError:
+    _VG_IMPORT_ERROR = None
+except Exception as _e:
+    # Broad on purpose: importing vgamepad connects to the ViGEmBus driver,
+    # which raises VIGEM_ERROR_BUS_NOT_FOUND (not ImportError) when the
+    # driver is missing. The app must survive that and show the hint.
     HAS_VGAMEPAD = False
+    _VG_IMPORT_ERROR = str(_e)
     vg = None  # type: ignore
     XB = None  # type: ignore
 
@@ -31,26 +36,44 @@ class HidMapperError(Exception):
 
 class HidProToXInput:
     def __init__(self, cfg: AppConfig):
-        if not HAS_VGAMEPAD:
-            from switch2mod import vigem_installer_path
-            msi = vigem_installer_path()
-            hint = (f" Run the bundled driver installer: {msi}" if msi
-                    else " Install ViGEmBus: https://github.com/nefarius/ViGEmBus/releases")
-            raise HidMapperError("Virtual gamepad unavailable." + hint)
         self.cfg = cfg.apply_aim_dial()
+        self.pad = None
+        if HAS_VGAMEPAD:
+            try:
+                self.pad = vg.VX360Gamepad()
+            except Exception as e:
+                log.warning("virtual pad create failed: %s", e)
+        self.vigem_error = None if self.pad is not None else (
+            _VG_IMPORT_ERROR or "ViGEmBus driver not running")
         self.reader = HidReader()
-        if not self.reader.open():
-            raise HidMapperError(
-                "HID 057e:2069 not opened. Plug USB-C DATA cable to rear USB. "
-                "If silent (no reports), enable once via procon2tool WebUSB then retry.")
-        self.pad = vg.VX360Gamepad()
+        self.connected = False
         self.running = False
         self.n_reports = 0
+        self.last_input_at = 0.0
+        self.latest_state = None
+        self.last_output = {}
         self.smoother = Smoother(self.cfg.smoothing)
         self.gyro_center_x = 0.0
         self.gyro_center_y = 0.0
-        if self.cfg.gyro_enabled:
-            self.calibrate_gyro()
+        self._connect()
+
+    def _connect(self) -> bool:
+        """Try to open the controller. Safe to call repeatedly (hotplug)."""
+        if self.connected:
+            return True
+        try:
+            if self.reader is None:
+                self.reader = HidReader()
+            if self.reader.open():
+                self.connected = True
+                log.info("controller connected")
+                if self.cfg.gyro_enabled:
+                    self.calibrate_gyro()
+                return True
+        except Exception as e:
+            log.warning("connect failed: %s", e)
+        self.connected = False
+        return False
 
     def calibrate_gyro(self, samples: int = 60) -> None:
         """Capture stationary gyro bias. Keep the controller still during start."""
@@ -66,9 +89,32 @@ class HidProToXInput:
         self.last_input_at = 0.0
         self.latest_state = None
 
+    def _drop(self) -> None:
+        """Disconnect the controller; run() will keep trying to reconnect."""
+        self.connected = False
+        try:
+            if self.reader is not None:
+                self.reader.close()
+        except Exception:
+            pass
+        self.reader = None
+        try:
+            if self.pad is not None:
+                self.pad.reset()
+                self.pad.update()
+        except Exception:
+            pass
+        log.info("controller disconnected")
+
     def step(self) -> bool:
         """Poll once. Returns False if no report (silent/disconnected)."""
-        st = self.reader.poll(timeout_ms=20)
+        if not self.connected or self.reader is None:
+            return False
+        try:
+            st = self.reader.poll(timeout_ms=20)
+        except Exception:
+            self._drop()
+            return False
         if st is None:
             return False
         self.last_input_at = time.monotonic()
@@ -127,6 +173,15 @@ class HidProToXInput:
         def hair(v: float, en: bool) -> int:
             return 255 if (en and v >= cfg.hair_threshold) else (int(v * 255) if not en else 0)
 
+        if self.pad is None:
+            # No ViGEmBus driver: still read/parse input and report telemetry,
+            # just cannot emit a virtual pad yet. GUI shows the driver hint.
+            self.last_output = {"lx": round(lx2, 3), "ly": round(ly2, 3),
+                                "rx": round(rx2, 3), "ry": round(ry2, 3),
+                                "lt": round(lt_f, 3), "rt": round(rt_f, 3),
+                                "btns": sorted(k for k, v in out.items() if v)}
+            return True
+
         self.pad.reset()
         mapping = {"A": XB.XUSB_GAMEPAD_A, "B": XB.XUSB_GAMEPAD_B,
                    "X": XB.XUSB_GAMEPAD_X, "Y": XB.XUSB_GAMEPAD_Y,
@@ -154,14 +209,18 @@ class HidProToXInput:
         """Idempotent teardown: zero the virtual pad, release HID. Safe to
         call from the GUI thread after the run loop exits."""
         try:
-            self.pad.reset()
-            self.pad.update()
+            if self.pad is not None:
+                self.pad.reset()
+                self.pad.update()
         except Exception:
             pass
         try:
-            self.reader.close()
+            if self.reader is not None:
+                self.reader.close()
         except Exception:
             pass
+        self.reader = None
+        self.connected = False
 
     def run(self) -> None:
         hz = max(60, min(1000, self.cfg.polling_hz))
@@ -170,16 +229,26 @@ class HidProToXInput:
         game = getattr(self.cfg, "game", "cod").upper()
         log.info("HID running @ %dHz - play %s now (Ctrl+C stop)", hz, game)
         silent_n = 0
+        reconnect_at = 0.0
         try:
             while self.running:
                 t0 = time.perf_counter()
+                if not self.connected:
+                    # Hotplug: poll for a controller ~2x/sec until one appears.
+                    now = time.monotonic()
+                    if now >= reconnect_at:
+                        reconnect_at = now + 0.5
+                        self._connect()
+                    time.sleep(0.05)
+                    continue
                 got = self.step()
                 if not got:
                     silent_n += 1
                     if silent_n == 100:
-                        log.warning("HID silent 100 polls - press pad buttons; if still silent, "
-                                    "enable via procon2tool WebUSB then replug.")
-                    # keep virtual pad alive with last state; brief sleep
+                        # Long silence: treat as unplugged and re-arm hotplug.
+                        log.warning("HID silent 100 polls - treating as disconnected")
+                        self._drop()
+                        silent_n = 0
                     time.sleep(0.005)
                 else:
                     silent_n = 0

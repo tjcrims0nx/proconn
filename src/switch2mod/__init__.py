@@ -27,9 +27,14 @@ def _vendor_dir() -> str:
 try:
     import vgamepad  # noqa: F401
 except ImportError:
+    # Package not installed at all: use the vendored copy.
     _vd = _vendor_dir()
     if _os.path.isdir(_vd) and _vd not in _sys.path:
         _sys.path.append(_vd)
+except Exception:
+    # Installed, but the ViGEmBus driver is missing/not running. Keep the
+    # installed package (do NOT fall back) so callers can report the hint.
+    pass
 
 from switch2mod.config import AppConfig
 

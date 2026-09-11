@@ -429,6 +429,60 @@ class ModGui:
             except Exception:
                 return False
 
+        # --- ViGEmBus driver status + one-click install from bundled MSI ---
+        driver_lbl = tk.Label(proof_card, text="", font=("Segoe UI", 8),
+                              bg=SURFACE)
+        driver_lbl.pack(anchor="w", padx=10, pady=(2, 0))
+
+        def driver_present() -> bool:
+            # Importing vgamepad connects to the ViGEmBus driver, so a
+            # successful import means the virtual pad stack is usable.
+            try:
+                import vgamepad  # noqa: F401
+                return True
+            except Exception:
+                return False
+
+        def refresh_driver_label():
+            try:
+                ok = driver_present()
+                driver_lbl.config(
+                    text="Virtual gamepad: ready (ViGEmBus present)" if ok
+                    else "Virtual gamepad: ViGEmBus missing",
+                    fg=NEON if ok else ACCENT_ERR)
+                try:
+                    install_btn.config(state="disabled" if ok else "normal",
+                                       fg=TEXT_DIM if ok else TEXT)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        def install_driver() -> None:
+            import subprocess
+            try:
+                from switch2mod import vigem_installer_path
+                msi = vigem_installer_path()
+                if not msi:
+                    set_status("Bundled driver installer not found", ACCENT_ERR)
+                    return
+                subprocess.Popen(["msiexec", "/i", msi], shell=False)
+                set_status("Driver installer launched - approve UAC, then reconnect", NEON)
+                root.after(3000, refresh_driver_label)
+            except Exception as e:
+                set_status(f"Driver install failed: {e}", ACCENT_ERR)
+
+        install_btn = tk.Button(proof_btns, text="INSTALL DRIVER (only if missing)",
+                                command=install_driver, font=("Segoe UI", 8),
+                                fg=TEXT, bg=SURFACE2, activeforeground=NEON,
+                                activebackground=BORDER, relief="flat", bd=0,
+                                padx=10, pady=5, cursor="hand2")
+        install_btn.pack(side="left", padx=(6, 0))
+        try:
+            refresh_driver_label()
+        except Exception:
+            pass
+
         admin_lbl = tk.Label(proof_card, text="", font=("Segoe UI", 8),
                              bg=SURFACE)
         admin_lbl.pack(anchor="w", padx=10)
@@ -1010,14 +1064,21 @@ class ModGui:
                 rep = ControllerDetector().full_report()
                 infos = rep["sdl"]
                 hid_pads = rep["hid"]
+                r = self.runner
+                mapped = bool(r is not None and getattr(r, "running", False)
+                              and getattr(r, "connected", False))
                 if hid_pads:
                     h = hid_pads[0]
-                    color = NEON if _glow_on[0] else NEON_DIM
-                    _glow_on[0] = not _glow_on[0]
+                    if mapped:
+                        color = NEON if _glow_on[0] else NEON_DIM
+                        _glow_on[0] = not _glow_on[0]
+                    else:
+                        color = ACCENT_WARN
                     dot.itemconfig(dot_id, fill=color)
                     dot.itemconfig(glow_id, outline=color)
+                    suffix = "  [LIVE]" if mapped else "  [press START]"
                     conn_label.config(
-                        text=f"HID 057e:{h.pid:04x}  {h.bus} - {h.product[:28]}",
+                        text=f"Controller connected: 057e:{h.pid:04x}  {h.bus}{suffix}",
                         fg=TEXT)
                     hid_badge.config(text=" HID ", bg=NEON, fg=BG)
                 elif infos:
@@ -1033,7 +1094,7 @@ class ModGui:
                     dot.itemconfig(dot_id, fill=ACCENT_ERR)
                     dot.itemconfig(glow_id, outline=ACCENT_ERR)
                     conn_label.config(
-                        text="No pad - plug USB-C DATA cable (rear USB)",
+                        text="Controller disconnected - plug in via USB-C DATA cable",
                         fg=TEXT_DIM)
                     hid_badge.config(text="", bg=SURFACE)
             except Exception as e:
@@ -1256,6 +1317,13 @@ class ModGui:
                 if use_hid:
                     from switch2mod.hid_mapper import HidProToXInput
                     self.runner = HidProToXInput(self.cfg)
+                    if getattr(self.runner, "pad", None) is None:
+                        set_status("Started - waiting: ViGEmBus driver missing "
+                                   "(click INSTALL DRIVER). Controller input is live.",
+                                   ACCENT_WARN)
+                    elif not getattr(self.runner, "connected", False):
+                        set_status("Started - waiting for controller (plug in USB-C)",
+                                   ACCENT_WARN)
                 else:
                     idx, _ = ControllerDetector().find(prefer_wired=True,
                                                        index=self.index)
