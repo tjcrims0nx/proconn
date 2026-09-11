@@ -1,5 +1,6 @@
 pygame-ce>=2.5.0
-vgamepad>=0.1.0
 hidapi>=0.14.0
 pyusb>=1.2.1
 libusb>=1.0.27
+# NOTE: vgamepad is intentionally NOT listed - its sdist-only release hangs
+# pip metadata builds on CI. It is vendored in src/switch2mod/_vendor/.
