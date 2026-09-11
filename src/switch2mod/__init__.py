@@ -47,25 +47,37 @@ def vigem_installer_path() -> str | None:
 
 
 def selftest() -> int:
-    """Verify the runtime can actually drive a virtual pad. Used by CI."""
+    """Verify the frozen/runtime can load its bundled gamepad. Exit non-zero
+    only for real packaging problems (missing modules), not for a machine
+    that lacks the ViGEmBus kernel driver."""
     ok = True
     print("switch2mod selftest")
     print("  frozen:", bool(getattr(_sys, "frozen", False)))
+    vd = _vendor_dir()
+    print("  vendor dir:", vd, "exists:", _os.path.isdir(vd))
+    driver_missing = False
     try:
         import vgamepad
-        print("  vgamepad:", vgamepad.__file__)
-    except Exception as e:
-        print("  vgamepad: IMPORT FAILED -", e)
-        return 1
-    try:
-        pad = vgamepad.VX360Gamepad()
-        pad.reset()
-        pad.update()
-        print("  virtual pad: OK")
-    except Exception as e:
-        print("  virtual pad: FAILED -", e)
-        print("  hint: install the driver at", vigem_installer_path())
+        print("  vgamepad:", getattr(vgamepad, "__file__", "?"))
+        try:
+            pad = vgamepad.VX360Gamepad()
+            pad.reset()
+            pad.update()
+            print("  virtual pad: OK")
+        except Exception as e:
+            driver_missing = True
+            print("  virtual pad: driver not installed (%s)" % e)
+    except ImportError as e:
+        # Module genuinely absent = packaging failure.
+        print("  vgamepad: NOT BUNDLED -", e)
         ok = False
+    except Exception as e:
+        # Module present; it failed while connecting to the bus.
+        driver_missing = True
+        print("  vgamepad present, driver not installed:", e)
+    if driver_missing:
+        print("  note: ViGEmBus driver not installed on this machine (normal on CI).")
+        print("  driver installer:", vigem_installer_path())
     try:
         import pygame
         print("  pygame:", pygame.version.ver)
@@ -77,6 +89,7 @@ def selftest() -> int:
         print("  hidapi: OK")
     except Exception as e:
         print("  hidapi: not available -", e)
+    print("  result:", "OK" if ok else "PROBLEMS")
     return 0 if ok else 1
 
 
