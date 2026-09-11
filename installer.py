@@ -18,6 +18,15 @@ GLOW_DARK = "#064a39"
 TEXT = "#effff8"
 DIM = "#86a79c"
 WARN = "#ffc56b"
+LOG_PATH = Path(os.environ.get("TEMP", str(Path.home()))) / "Switch2ProMod-install.log"
+
+
+def log_line(msg: str) -> None:
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+    except Exception:
+        pass
 
 
 class Installer:
@@ -109,6 +118,7 @@ class Installer:
                              for p in source.rglob("*") if p.is_file()]
             self._pending_total = max(1, len(self._pending))
             self._pending_done = 0
+            log_line(f"payload files: {self._pending_total} -> {self._install_dir}")
             if self._install_dir.exists():
                 self._set_progress("Removing previous version",
                                    "Cleaning the old installation...", 0.05)
@@ -123,6 +133,7 @@ class Installer:
         try:
             if self.cancel_event.is_set():
                 self.running = False
+                log_line("cancelled by user")
                 self.status.config(text="Installation cancelled", fg=WARN)
                 self.button.config(state="normal", text="RETRY", command=self.start)
                 return
@@ -182,8 +193,9 @@ class Installer:
 
     def _failed(self, error: str) -> None:
         self.running = False
+        log_line("FAILED: " + error)
         self.status.config(text="Installation failed", fg=WARN)
-        self.detail.config(text=error[:90])
+        self.detail.config(text=(error[:70] + "  (log: %TEMP%\\Switch2ProMod-install.log)"))
         self.button.config(state="normal", text="RETRY", command=self.start)
 
     def launch(self) -> None:
