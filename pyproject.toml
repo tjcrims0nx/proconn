@@ -14,3 +14,7 @@ switch2mod = "switch2mod.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"switch2mod._vendor.vgamepad.win" = ["vigem/**/*"]
+"switch2mod._vendor.vgamepad.lin" = ["*.py"]

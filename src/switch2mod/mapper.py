@@ -39,7 +39,11 @@ class MapperError(Exception):
 class ProToXInput:
     def __init__(self, cfg: AppConfig, joy_index: int):
         if not HAS_VGAMEPAD:
-            raise MapperError("vgamepad + ViGEmBus required. See README.")
+            from switch2mod import vigem_installer_path
+            msi = vigem_installer_path()
+            hint = (f" Run the bundled driver installer: {msi}" if msi
+                    else " Install ViGEmBus: https://github.com/nefarius/ViGEmBus/releases")
+            raise MapperError("Virtual gamepad unavailable." + hint)
         self.cfg = cfg.apply_aim_dial()
         self.joy = pygame.joystick.Joystick(joy_index)
         self.joy.init()

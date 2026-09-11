@@ -32,7 +32,11 @@ class HidMapperError(Exception):
 class HidProToXInput:
     def __init__(self, cfg: AppConfig):
         if not HAS_VGAMEPAD:
-            raise HidMapperError("vgamepad + ViGEmBus required. See README.")
+            from switch2mod import vigem_installer_path
+            msi = vigem_installer_path()
+            hint = (f" Run the bundled driver installer: {msi}" if msi
+                    else " Install ViGEmBus: https://github.com/nefarius/ViGEmBus/releases")
+            raise HidMapperError("Virtual gamepad unavailable." + hint)
         self.cfg = cfg.apply_aim_dial()
         self.reader = HidReader()
         if not self.reader.open():
