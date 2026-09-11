@@ -336,7 +336,10 @@ class CrosshairOverlay:
 
         # --- hide on ADS ---
         self.canvas.delete("all")
-        if cfg.hide_on_ads and ads:
+        # A requested pulse is explicit visual feedback; let it render even
+        # when the normal crosshair is configured to hide during ADS.
+        pulse_active = time.monotonic() < self._pulse_until
+        if cfg.hide_on_ads and ads and not pulse_active:
             self._schedule()
             return
 
