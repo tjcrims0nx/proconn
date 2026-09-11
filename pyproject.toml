@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "switch2mod"
-version = "0.0.8"
+version = "0.0.1"
 description = "Switch 2 Pro Controller to XInput mod for COD on PC (wired, Gamesir-like tuning)"
 requires-python = ">=3.10"
 dependencies = ["pygame-ce>=2.5.0", "hidapi>=0.14.0", "pyusb>=1.2.1", "libusb>=1.0.27"]
