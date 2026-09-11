@@ -40,19 +40,22 @@ jobs:
           --add-data "cod_profile.json;." --add-data "destiny2_profile.json;."
           app.py
 
-      - name: Package release
-        shell: powershell
-        run: Compress-Archive -Path dist\Switch2ProMod\* -DestinationPath Switch2ProMod-windows.zip
+      - name: Build installer EXE
+        run: >-
+          pyinstaller --noconfirm --clean --onefile --windowed
+          --name Switch2ProModSetup
+          --add-data "dist/Switch2ProMod;payload"
+          installer.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: Switch2ProMod-windows
-          path: Switch2ProMod-windows.zip
+          path: dist/Switch2ProModSetup.exe
 
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: Switch2ProMod-windows.zip
+          files: dist/Switch2ProModSetup.exe
