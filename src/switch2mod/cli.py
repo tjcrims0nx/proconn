@@ -126,7 +126,7 @@ def cmd_watch_game(args) -> int:
     while not _game_running():
         time.sleep(1.0)
     print("Call of Duty detected. Launching controller GUI.")
-    profile = args.profile or GAME_PROFILES.get(args.game, "cod_profile.json")
+    profile = resolve_profile(args.profile or GAME_PROFILES.get(args.game, "cod_profile.json"))
     cfg = AppConfig.load(profile)
     from switch2mod.gui import ModGui
     ModGui(cfg, Path(profile), wired=args.wired, index=args.index,
@@ -224,7 +224,7 @@ def _run(args) -> int:
     if args.calibrate:
         return cmd_calibrate(args.index)
 
-    profile = args.profile or GAME_PROFILES.get(args.game, "cod_profile.json")
+    profile = resolve_profile(args.profile or GAME_PROFILES.get(args.game, "cod_profile.json"))
     cfg = AppConfig.load(profile)
     if args.crosshair:
         import tkinter as tk
