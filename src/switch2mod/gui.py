@@ -907,8 +907,13 @@ class ModGui:
                           font=("Segoe UI", 8), fg=TEXT_DIM, bg=SURFACE2,
                           anchor="w")
         status.pack(side="left", fill="x", expand=True)
+        _status_state = ["Ready - press START to begin", TEXT_DIM]
 
         def set_status(text: str, color: str = TEXT_DIM):
+            if _status_state[0] == text and _status_state[1] == color:
+                return
+            _status_state[0] = text
+            _status_state[1] = color
             status.config(text=text, fg=color)
             status_dot.itemconfig(st_dot_id, fill=color)
 
@@ -1047,43 +1052,42 @@ class ModGui:
         def _viz_reader():
             import pygame as pg
             from switch2mod.hid_reader import HidReader
-            try:
-                try:
-                    pg.joystick.init()
-                except Exception:
-                    pass
-                idx, _ = ControllerDetector().find(prefer_wired=True, index=self.index)
-                if idx is not None:
-                    pj = pg.joystick.Joystick(idx)
-                    pj.init()
-                    while True:
-                        pg.event.pump()
-                        _viz_holder.update(
-                            lx=pj.get_axis(0),
-                            ly=pj.get_axis(1),
-                            rx=pj.get_axis(2) if pj.get_numaxes() > 2 else 0.0,
-                            ry=pj.get_axis(3) if pj.get_numaxes() > 3 else 0.0,
-                            ads=pj.get_button(11) if pj.get_numbuttons() > 11 else False,
-                            dead=False)
-                        time.sleep(0.002)
-            except Exception:
-                pass
+            # Direct HID is authoritative for Switch 2: SDL exposes a generic
+            # If_Hid pad that omits the real paddle/button layout.
             try:
                 hr = HidReader()
-                if not hr.open():
+                if hr.open():
                     _viz_holder["dead"] = None
+                    while True:
+                        state = hr.poll(timeout_ms=50)
+                        if state is None:
+                            time.sleep(0.002)
+                            continue
+                        _viz_holder.update(
+                            lx=state.lx, ly=state.ly, rx=state.rx, ry=state.ry,
+                            ads=bool(state.buttons.get("ZL")),
+                            btns=dict(state.buttons), dead=False)
+            except Exception:
+                pass
+            # SDL fallback for non-Switch controllers.
+            try:
+                pg.joystick.init()
+                idx, _ = ControllerDetector().find(prefer_wired=True, index=self.index)
+                if idx is None:
+                    _viz_holder["dead"] = True
                     return
+                pj = pg.joystick.Joystick(idx)
+                pj.init()
                 _viz_holder["dead"] = None
                 while True:
-                    state = hr.poll(timeout_ms=50)
-                    if state is None:
-                        time.sleep(0.002)
-                        continue
+                    pg.event.pump()
                     _viz_holder.update(
-                        lx=state.lx, ly=state.ly, rx=state.rx, ry=state.ry,
-                        ads=bool(state.buttons.get("ZL")),
-                        btns=dict(state.buttons),
+                        lx=pj.get_axis(0), ly=pj.get_axis(1),
+                        rx=pj.get_axis(2) if pj.get_numaxes() > 2 else 0.0,
+                        ry=pj.get_axis(3) if pj.get_numaxes() > 3 else 0.0,
+                        ads=pj.get_button(11) if pj.get_numbuttons() > 11 else False,
                         dead=False)
+                    time.sleep(0.002)
             except Exception:
                 _viz_holder["dead"] = True
 

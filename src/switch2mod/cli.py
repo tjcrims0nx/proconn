@@ -105,6 +105,22 @@ def cmd_hid_calibrate() -> int:
 
 GAME_PROFILES = {"cod": "cod_profile.json", "destiny2": "destiny2_profile.json", "d2": "destiny2_profile.json"}
 
+
+def resolve_profile(path: str) -> str:
+    """Resolve profiles from the current directory, bundled EXE directory,
+    or source root."""
+    p = Path(path)
+    if p.is_absolute() or p.exists():
+        return str(p)
+    candidates = (
+        Path(sys.executable).resolve().parent / p,
+        Path(__file__).resolve().parents[2] / p,
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return str(p)
+
 COD_PROCESS_NAMES = {"cod.exe", "modernwarfare.exe", "modernwarfarelauncher.exe",
                      "blackops6.exe", "blackops7.exe", "warzone.exe"}
 
