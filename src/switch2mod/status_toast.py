@@ -14,13 +14,14 @@ import time
 
 log = logging.getLogger("switch2mod.toast")
 
-BG = "#031715"
+BG = "#12b879"
+EDGE = "#7affc2"
 NEON = "#12f5a0"
 NEON_DIM = "#0a6b4e"
 WARN = "#ffb454"
 ERR = "#ff5c73"
-TEXT = "#f1faf7"
-DIM = "#7f9d95"
+TEXT = "#00100d"
+DIM = "#003b2b"
 
 
 class StatusToast:
@@ -49,17 +50,21 @@ class StatusToast:
         self.win.configure(bg=BG)
         self.win.geometry("+14+14")
 
-        row = tk.Frame(self.win, bg=BG)
-        row.pack(padx=14, pady=10)
-        self.dot = tk.Canvas(row, width=14, height=14, bg=BG,
-                            highlightthickness=0)
+        frame = tk.Frame(self.win, bg=EDGE, bd=0)
+        frame.pack(padx=0, pady=0)
+        panel = tk.Frame(frame, bg=BG)
+        panel.pack(padx=2, pady=2)
+        row = tk.Frame(panel, bg=BG)
+        row.pack(padx=14, pady=(8, 2))
+        self.dot = tk.Canvas(row, width=20, height=20, bg=BG,
+                             highlightthickness=0)
         self.dot.pack(side="left")
-        self.dot_id = self.dot.create_oval(2, 2, 12, 12, fill=NEON,
-                                            outline="")
-        self.label = tk.Label(row, text="TOOL LIVE", font=("Segoe UI Semibold", 9),
+        self.dot_id = self.dot.create_oval(2, 2, 18, 18, fill=NEON,
+                                           outline="")
+        self.label = tk.Label(row, text="MOD LIVE", font=("Segoe UI Semibold", 10),
                               fg=TEXT, bg=BG)
         self.label.pack(side="left", padx=(8, 0))
-        self.sub = tk.Label(self.win, text="", font=("Segoe UI", 8),
+        self.sub = tk.Label(panel, text="", font=("Segoe UI", 8),
                             fg=DIM, bg=BG)
         self.sub.pack(anchor="w", padx=14, pady=(0, 8))
 

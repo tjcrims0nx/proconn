@@ -1223,6 +1223,15 @@ class ModGui:
                 self.cfg.polling_hz = 1000
             ch = _current_crosshair()
             ch.enabled = bool(xh_on.get())
+            if ch.aim_sweep_pulse and not ch.enabled:
+                # Pulse needs a surface: auto-enable the overlay so the
+                # toggle visibly does something instead of silently nothing.
+                ch.enabled = True
+                try:
+                    xh_on.set(True)
+                except Exception:
+                    pass
+                set_status("Crosshair auto-enabled (required for ADS pulse)", NEON)
             self.cfg.crosshair = ch
             if self.profile_path:
                 self.cfg.save(self.profile_path)

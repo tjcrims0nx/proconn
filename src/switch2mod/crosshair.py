@@ -396,14 +396,18 @@ class CrosshairOverlay:
 
         # Manual mark pulse: driven by an explicit controller/UI action only.
         if time.monotonic() < self._pulse_until:
-            pulse_r = int(s + 14)
+            pulse_r = int(s + 28)
             self.canvas.create_oval(cx - pulse_r, cy - pulse_r,
                                     cx + pulse_r, cy + pulse_r,
-                                    outline=col, width=max(2, t + 1))
+                                    outline=col, width=max(3, t + 2))
+            pulse_r2 = int(s + 18)
+            self.canvas.create_oval(cx - pulse_r2, cy - pulse_r2,
+                                    cx + pulse_r2, cy + pulse_r2,
+                                    outline=col, width=1)
 
         self._schedule()
 
-    def pulse(self, duration: float = 0.28) -> None:
+    def pulse(self, duration: float = 0.45) -> None:
         """Pulse after an explicit manual mark button. No target detection."""
         self._pulse_until = max(self._pulse_until, time.monotonic() + duration)
         self._redraw()
@@ -474,6 +478,9 @@ class CrosshairOverlay:
             self.win.deiconify()
             self.win.update()
             self.win.attributes("-topmost", True)
+            # Tk exposes this through wm_attributes on some Windows builds;
+            # attributes() alone silently fails and leaves an opaque square.
+            self.win.wm_attributes("-transparentcolor", key_color)
             self.win.attributes("-transparentcolor", key_color)
             # NOTE: never use -alpha here: on Windows it dims the ENTIRE
             # screen including transparent regions. Opacity is done per-shape
