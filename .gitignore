@@ -10,3 +10,5 @@ controller_samples/summary.json
 controller_samples/gyro_recommendation.json
 controller_samples/stick_capture_status.json
 *.tmp
+
+*.spec
