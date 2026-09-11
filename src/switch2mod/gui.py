@@ -496,14 +496,32 @@ class ModGui:
         def restart_admin() -> None:
             import subprocess
             import sys
+            from pathlib import Path as _P
             try:
-                params = " ".join([sys.executable, "app.py", "--hid", "--gui"])
+                if getattr(sys, "frozen", False):
+                    # Installed EXE: no script arg; frozen defaults open the GUI.
+                    exe = sys.executable
+                    args = ["--hid", "--gui"]
+                    cwd = str(_P(exe).resolve().parent)
+                else:
+                    root_dir = _P(__file__).resolve().parents[2]
+                    exe = sys.executable
+                    args = [str(root_dir / "app.py"), "--hid", "--gui"]
+                    cwd = str(root_dir)
+                quoted = ",".join(f'"{a}"' for a in args)
                 subprocess.Popen(
                     ["powershell", "-Command",
-                     f'Start-Process -FilePath "{sys.executable}" '
-                     f'-ArgumentList "app.py","--hid","--gui" '
-                     f'-WorkingDirectory "{os.getcwd()}" -Verb RunAs'])
-                set_status("Relaunching as admin - approve the UAC prompt", NEON)
+                     f'Start-Process -FilePath "{exe}" '
+                     f"-ArgumentList {quoted} "
+                     f'-WorkingDirectory "{cwd}" -Verb RunAs'])
+                set_status("Relaunching as admin - approve UAC; this window will close", NEON)
+                # Free the single-instance lock BEFORE the elevated copy
+                # starts, or it will refuse and exit immediately.
+                try:
+                    on_stop()
+                except Exception:
+                    pass
+                root.after(800, root.destroy)
             except Exception as e:
                 set_status(f"Admin relaunch failed: {e}", ACCENT_ERR)
 
@@ -977,9 +995,12 @@ class ModGui:
             """Return a supported running game name; no screen/gameplay inspection."""
             try:
                 import subprocess
+                kwargs = {"text": True, "stderr": subprocess.DEVNULL}
+                if os.name == "nt":
+                    kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
                 raw = subprocess.check_output(
                     ["tasklist", "/fo", "csv", "/nh"],
-                    text=True, stderr=subprocess.DEVNULL)
+                    **kwargs)
                 names = {line.split(",", 1)[0].strip('"').lower()
                          for line in raw.splitlines() if line}
                 cod_names = {

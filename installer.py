@@ -128,8 +128,19 @@ class Installer:
             log_line(f"payload files: {self._pending_total} -> {self._install_dir}")
             if self._install_dir.exists():
                 self._set_progress("Removing previous version",
-                                   "Cleaning the old installation...", 0.05)
-                shutil.rmtree(self._install_dir)
+                                   "Closing old app and cleaning...", 0.05)
+                try:
+                    subprocess.run(["taskkill", "/F", "/IM", "Switch2ProMod.exe"],
+                                   capture_output=True, timeout=15,
+                                   creationflags=subprocess.CREATE_NO_WINDOW)
+                except Exception as e:
+                    log_line("taskkill: " + str(e))
+                try:
+                    shutil.rmtree(self._install_dir)
+                except Exception as e:
+                    # Locked files (missed process): fall through and
+                    # overwrite per-file in the copy loop instead.
+                    log_line("rmtree failed, overwriting in place: " + str(e))
             self._set_progress("Installing runtime", "Starting file copy...", 0.08)
             self.root.after(30, self._copy_chunk)
         except Exception as e:
@@ -148,8 +159,15 @@ class Installer:
                 if not self._pending:
                     break
                 src, dst = self._pending.pop(0)
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
+                try:
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dst)
+                except Exception as e:
+                    # Locked file (app still running): record and continue so
+                    # one stuck file can't fail the whole install.
+                    log_line(f"skip locked {dst.name}: {e}")
+                    self._skipped = getattr(self, "_skipped", [])
+                    self._skipped.append(dst.name)
                 self._pending_done += 1
             frac = self._pending_done / self._pending_total
             self._set_progress("Installing runtime",
@@ -194,8 +212,14 @@ class Installer:
 
     def _finished(self) -> None:
         self.done = True
-        self.status.config(text="Installation complete", fg=NEON)
-        self.detail.config(text="Switch 2 Pro Mod is ready")
+        skipped = getattr(self, "_skipped", [])
+        if skipped:
+            self.status.config(text="Installed - close the app and retry for skipped files", fg=WARN)
+            self.detail.config(text="Skipped (in use): " + ", ".join(skipped[:4]))
+            log_line("skipped: " + ", ".join(skipped))
+        else:
+            self.status.config(text="Installation complete", fg=NEON)
+            self.detail.config(text="Switch 2 Pro Mod is ready")
         self.button.config(state="normal", text="LAUNCH", command=self.launch)
 
     def _failed(self, error: str) -> None:
