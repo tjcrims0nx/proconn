@@ -127,8 +127,10 @@ COD_PROCESS_NAMES = {"cod.exe", "modernwarfare.exe", "modernwarfarelauncher.exe"
 
 def _game_running() -> bool:
     try:
-        raw = subprocess.check_output(["tasklist", "/fo", "csv", "/nh"],
-                                      text=True, stderr=subprocess.DEVNULL)
+        kwargs = {"text": True, "stderr": subprocess.DEVNULL}
+        if sys.platform == "win32":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        raw = subprocess.check_output(["tasklist", "/fo", "csv", "/nh"], **kwargs)
         names = {line.split(",", 1)[0].strip('"').lower()
                  for line in raw.splitlines() if line}
         return bool(names & COD_PROCESS_NAMES)
