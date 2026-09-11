@@ -185,7 +185,10 @@ def check_deps() -> list[str]:
         missing.append("hidapi")
     try:
         import vgamepad  # noqa: F401
-    except ImportError:
+    except Exception:
+        # vgamepad connects to ViGEmBus during import. A missing kernel
+        # driver is a runtime warning, not a Python dependency failure.
+        pass
         missing.append("vgamepad")
     return missing
 
