@@ -14,7 +14,7 @@
   "right_antideadzone": 0.09,
   "response_curve": "aggressive",
   "curve_power": 1.8,
-  "invert_y": true,
+  "invert_y": false,
   "right_stick_sensitivity": 1.45,
   "hair_trigger_left": true,
   "hair_trigger_right": true,
