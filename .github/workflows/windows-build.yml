@@ -31,11 +31,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install -r requirements.txt
+          pip install pygame-ce>=2.5.0 vgamepad>=0.1.0 --only-binary :all:
+          pip install hidapi --only-binary :all: || echo "hidapi binary not available, skipping"
           pip install pyinstaller
-
-      - name: Install package
-        run: pip install -e .
 
       - name: Run tests
         run: |
