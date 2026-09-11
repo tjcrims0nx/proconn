@@ -96,54 +96,83 @@ class Installer:
         self.running = True
         self.cancel_event.clear()
         self.button.config(state="disabled", text="INSTALLING...")
-        threading.Thread(target=self._install, daemon=True).start()
-
-    def _install(self) -> None:
+        # Build the copy queue on the main thread (fast), then copy in
+        # small main-thread chunks so progress + animation stay live.
+        # Tkinter widgets must only be touched from the main thread.
         try:
             bundle = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "payload"
             source = bundle / "Switch2ProMod"
-            install_dir = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Switch2ProMod"
+            self._install_dir = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Switch2ProMod"
             if not source.exists():
                 raise RuntimeError(f"Payload missing: {source}")
-            self._set_progress("Preparing installation", "Checking bundled runtime...", 0.02)
-            if install_dir.exists():
-                self._set_progress("Removing previous version", "Cleaning the old installation...", 0.08)
-                shutil.rmtree(install_dir)
-            files = [p for p in source.rglob("*") if p.is_file()]
-            total = max(1, len(files))
-            for n, src in enumerate(files, 1):
-                if self.cancel_event.is_set():
-                    return
-                dst = install_dir / src.relative_to(source)
+            self._pending = [(p, self._install_dir / p.relative_to(source))
+                             for p in source.rglob("*") if p.is_file()]
+            self._pending_total = max(1, len(self._pending))
+            self._pending_done = 0
+            if self._install_dir.exists():
+                self._set_progress("Removing previous version",
+                                   "Cleaning the old installation...", 0.05)
+                shutil.rmtree(self._install_dir)
+            self._set_progress("Installing runtime", "Starting file copy...", 0.08)
+            self.root.after(30, self._copy_chunk)
+        except Exception as e:
+            self._failed(str(e))
+
+    def _copy_chunk(self) -> None:
+        # Copy up to 12 files per UI tick: keeps animation + percent smooth.
+        try:
+            if self.cancel_event.is_set():
+                self.running = False
+                self.status.config(text="Installation cancelled", fg=WARN)
+                self.button.config(state="normal", text="RETRY", command=self.start)
+                return
+            for _ in range(12):
+                if not self._pending:
+                    break
+                src, dst = self._pending.pop(0)
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dst)
-                self._set_progress("Installing runtime",
-                                   f"Copying {src.name} ({n}/{total})",
-                                   0.10 + 0.78 * n / total)
-            exe = install_dir / "Switch2ProMod.exe"
+                self._pending_done += 1
+            frac = self._pending_done / self._pending_total
+            self._set_progress("Installing runtime",
+                               f"Copying files ({self._pending_done}/{self._pending_total})",
+                               0.10 + 0.78 * frac)
+            if self._pending:
+                self.root.after(10, self._copy_chunk)
+                return
+            self._make_shortcut()
+        except Exception as e:
+            self._failed(str(e))
+
+    def _make_shortcut(self) -> None:
+        try:
+            exe = self._install_dir / "Switch2ProMod.exe"
             shortcut = (Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" /
                         "Start Menu" / "Programs" / "Switch 2 Pro Mod.lnk")
             shortcut.parent.mkdir(parents=True, exist_ok=True)
             ps = ("$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{shortcut}');"
                   "$s.TargetPath='{exe}';$s.WorkingDirectory='{wd}';$s.Save()")
-            ps = ps.format(shortcut=shortcut, exe=exe, wd=install_dir)
+            ps = ps.format(shortcut=shortcut, exe=exe, wd=self._install_dir)
             self._set_progress("Creating shortcuts", "Adding Start Menu shortcut...", 0.94)
             subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
                             "-Command", ps], check=False,
                            creationflags=subprocess.CREATE_NO_WINDOW)
             self._set_progress("Finalizing", "Installation complete.", 1.0)
-            self.root.after(0, self._finished)
+            self.root.after(250, self._finished)
         except Exception as e:
-            self.root.after(0, lambda: self._failed(str(e)))
+            self._failed(str(e))
+
+    def _install(self) -> None:
+        # Legacy entry point kept for compatibility; the chunked main-thread
+        # installer above is now used instead.
+        self.root.after(0, self.start)
 
     def _set_progress(self, title: str, detail: str, percent: float) -> None:
-        def update():
-            if not self.root.winfo_exists():
-                return
-            self.percent = max(0.0, min(1.0, percent))
-            self.status.config(text=title)
-            self.detail.config(text=detail)
-        self.root.after(0, update)
+        if not self.root.winfo_exists():
+            return
+        self.percent = max(0.0, min(1.0, percent))
+        self.status.config(text=title)
+        self.detail.config(text=detail)
 
     def _finished(self) -> None:
         self.done = True
