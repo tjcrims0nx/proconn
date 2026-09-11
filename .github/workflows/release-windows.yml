@@ -35,6 +35,7 @@ jobs:
         run: >-
           pyinstaller --noconfirm --clean --windowed --name Switch2ProMod
           --paths src --collect-all pygame
+          --exclude-module vgamepad
           --add-data "src/switch2mod/_vendor;switch2mod/_vendor"
           --add-data "cod_profile.json;." --add-data "destiny2_profile.json;."
           app.py

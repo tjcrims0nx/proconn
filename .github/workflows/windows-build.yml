@@ -51,6 +51,7 @@ jobs:
           pyinstaller --onefile --windowed ^
             --name "Switch2ProMod" ^
             --icon NONE ^
+            --exclude-module vgamepad ^
             --add-data "cod_profile.json;." ^
             --add-data "destiny2_profile.json;." ^
             --add-data "src/switch2mod/_vendor;switch2mod/_vendor" ^
@@ -74,6 +75,7 @@ jobs:
           pyinstaller --onefile ^
             --name "Switch2ProMod-console" ^
             --icon NONE ^
+            --exclude-module vgamepad ^
             --add-data "cod_profile.json;." ^
             --add-data "destiny2_profile.json;." ^
             --add-data "src/switch2mod/_vendor;switch2mod/_vendor" ^
