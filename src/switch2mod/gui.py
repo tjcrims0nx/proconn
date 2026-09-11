@@ -1135,9 +1135,10 @@ class ModGui:
                     lx2, ly2, rx2, ry2 = process_sticks(eff, lx, ly, rx, ry,
                                                          ads_held=ads)
                     draw_stick(left_canvas, lx, ly, lx2, ly2, eff.left_deadzone)
-                    # XInput receives -RY; invert the display Y so the
-                    # visual matches the actual in-game aim direction.
-                    draw_stick(right_canvas, rx, -ry, rx2, -ry2,
+                    # Display the processed stick coordinates directly. The
+                    # profile's invert_y setting is already applied once by
+                    # process_sticks; do not invert the GUI a second time.
+                    draw_stick(right_canvas, rx, ry, rx2, ry2,
                                eff.right_deadzone, ads=ads)
                     left_coord.config(text=f"{lx2:+.2f}, {ly2:+.2f}")
                     right_coord.config(text=f"{rx2:+.2f}, {ry2:+.2f}")
