@@ -110,10 +110,17 @@ class Installer:
         # Tkinter widgets must only be touched from the main thread.
         try:
             bundle = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "payload"
-            source = bundle / "Switch2ProMod"
+            # PyInstaller --add-data "dist/Switch2ProMod;payload" copies the
+            # FOLDER CONTENTS into payload/ (no nested Switch2ProMod dir),
+            # but tolerate both layouts.
+            nested = bundle / "Switch2ProMod"
+            if (nested / "Switch2ProMod.exe").exists():
+                source = nested
+            elif (bundle / "Switch2ProMod.exe").exists():
+                source = bundle
+            else:
+                raise RuntimeError(f"Payload missing: {bundle}")
             self._install_dir = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Switch2ProMod"
-            if not source.exists():
-                raise RuntimeError(f"Payload missing: {source}")
             self._pending = [(p, self._install_dir / p.relative_to(source))
                              for p in source.rglob("*") if p.is_file()]
             self._pending_total = max(1, len(self._pending))
