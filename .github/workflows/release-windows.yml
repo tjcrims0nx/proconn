@@ -34,7 +34,8 @@ jobs:
       - name: Build EXE
         run: >-
           pyinstaller --noconfirm --clean --windowed --name Switch2ProMod
-          --paths src --collect-all pygame --collect-all vgamepad
+          --paths src --collect-all pygame
+          --add-data "src/switch2mod/_vendor;switch2mod/_vendor"
           --add-data "cod_profile.json;." --add-data "destiny2_profile.json;."
           app.py
 

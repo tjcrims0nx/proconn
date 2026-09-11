@@ -53,6 +53,7 @@ jobs:
             --icon NONE ^
             --add-data "cod_profile.json;." ^
             --add-data "destiny2_profile.json;." ^
+            --add-data "src/switch2mod/_vendor;switch2mod/_vendor" ^
             --hidden-import switch2mod.cli ^
             --hidden-import switch2mod.gui ^
             --hidden-import switch2mod.mapper ^
@@ -64,9 +65,7 @@ jobs:
             --hidden-import switch2mod.sticks ^
             --hidden-import switch2mod.rear ^
             --hidden-import switch2mod.logging_setup ^
-            --hidden-import vgamepad ^
             --hidden-import hid ^
-            --collect-all vgamepad ^
             app.py
         shell: cmd
 
@@ -77,6 +76,7 @@ jobs:
             --icon NONE ^
             --add-data "cod_profile.json;." ^
             --add-data "destiny2_profile.json;." ^
+            --add-data "src/switch2mod/_vendor;switch2mod/_vendor" ^
             --hidden-import switch2mod.cli ^
             --hidden-import switch2mod.gui ^
             --hidden-import switch2mod.mapper ^
@@ -88,15 +88,14 @@ jobs:
             --hidden-import switch2mod.sticks ^
             --hidden-import switch2mod.rear ^
             --hidden-import switch2mod.logging_setup ^
-            --hidden-import vgamepad ^
             --hidden-import hid ^
-            --collect-all vgamepad ^
             app.py
         shell: cmd
 
       - name: Verify build
         run: |
           dir dist\
+          dist\Switch2ProMod-console.exe --selftest || echo "selftest reported issues"
           dist\Switch2ProMod-console.exe --list || echo "No controller connected (expected in CI)"
 
       - name: Upload artifacts

@@ -165,6 +165,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--no-center", action="store_true")
     ap.add_argument("--hid", action="store_true", help="Use direct HID reader (057e:2069) instead of SDL")
     ap.add_argument("--hid-calibrate", action="store_true", help="Live HID report dump for Switch 2 Pro")
+    ap.add_argument("--selftest", action="store_true",
+                    help="Verify gamepad/pygame/hidapi runtime (used by CI)")
     ap.add_argument("--enable-usb", action="store_true",
                     help="Initialize Switch 2 Pro USB bulk interface and enable motion reports")
     ap.add_argument("--crosshair", action="store_true", help="Overlay-only mode: screen crosshair, no mapper")
@@ -213,6 +215,14 @@ def main(argv: list[str] | None = None) -> int:
     ap = build_parser()
     args = ap.parse_args(argv)
     setup_logging(args.log)
+    if getattr(sys, "frozen", False) and not (
+            args.list or args.calibrate or args.hid_calibrate or args.selftest
+            or args.gui or args.hid or args.crosshair):
+        # Frozen EXE double-click: open the full GUI in HID mode instead of
+        # running a headless SDL mapper on the wrong device with no window.
+        args.gui = True
+        args.hid = True
+        args.wired = True
     try:
         return _run(args)
     except KeyboardInterrupt:
@@ -221,6 +231,9 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run(args) -> int:
+    if getattr(args, "selftest", False):
+        from switch2mod import selftest
+        return selftest()
     missing = check_deps()
     if missing:
         print(f"WARNING: missing {missing} for {sys.executable}")
