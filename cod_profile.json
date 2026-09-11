@@ -51,7 +51,7 @@
   "right_antideadzone": 0.1275,
   "response_curve": "aggressive",
   "curve_power": 2.22,
-  "invert_y": false,
+  "invert_y": true,
   "right_stick_sensitivity": 1.85,
   "gyro_enabled": true,
   "gyro_left_enabled": false,
