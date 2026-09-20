@@ -11,7 +11,7 @@ import time
 
 from switch2mod.config import AppConfig
 from switch2mod.hid_reader import HidReader
-from switch2mod.sticks import Smoother, process_sticks, to_s16
+from switch2mod.sticks import Smoother, ensure_sprint_magnitude, process_sticks, to_s16, update_ads_state, update_sprint_latch
 
 log = logging.getLogger("switch2mod.hidmapper")
 
@@ -52,10 +52,43 @@ class HidProToXInput:
         self.last_input_at = 0.0
         self.latest_state = None
         self.last_output = {}
+        self._prev_l3 = False
+        self._prev_r3 = False
+        # Game -> pad rumble, scaled by cfg.rumble_scale. Receipt only:
+        # Switch 2 Pro HD-haptic output encoding is unverified, so motors
+        # are NOT driven (no blind bytes to hardware). GUI shows activity.
+        self.last_rumble = (0, 0, 0.0)
+        if self.pad is not None:
+            try:
+                self.pad.register_notification(self._on_rumble)
+            except Exception as e:
+                log.warning("rumble notify unavailable: %s", e)
         self.smoother = Smoother(self.cfg.smoothing)
+        self.cx_l = self.cy_l = self.cx_r = self.cy_r = 0.0
         self.gyro_center_x = 0.0
         self.gyro_center_y = 0.0
+        # Debounced ADS latch so paddle GL chatter can't flip hipfire/ADS
+        # stick shaping frame-to-frame (paddle speed bursts while scoped).
+        self.ads_on = False
+        self.ads_changed_at = 0.0
+        # Sticky sprint: COD drops sprint on one flicker frame. Latch L3 so
+        # click-switch/HID jitter can't kill a run mid-stride.
+        self.sprint_on = False
+        self.sprint_changed_at = 0.0
+        # Calibrations run once on first connect. Reconnects must resume
+        # instantly - re-running ~6s of sampling on every hotplug is what
+        # used to turn a blink into a dead period.
+        self._ever_calibrated = False
         self._connect()
+
+    def _on_rumble(self, _client, _target, large_motor, small_motor, _led, _user=None) -> None:
+        """ViGEm thread callback: record scaled game rumble. Never touch Tk here."""
+        try:
+            s = max(0.0, min(2.0, float(self.cfg.rumble_scale)))
+            import time
+            self.last_rumble = (int(large_motor * s), int(small_motor * s), time.monotonic())
+        except Exception:
+            pass
 
     def _connect(self) -> bool:
         """Try to open the controller. Safe to call repeatedly (hotplug)."""
@@ -67,13 +100,52 @@ class HidProToXInput:
             if self.reader.open():
                 self.connected = True
                 log.info("controller connected")
-                if self.cfg.gyro_enabled:
-                    self.calibrate_gyro()
+                if not self._ever_calibrated:
+                    self.calibrate_center()
+                    if self.cfg.gyro_enabled:
+                        self.calibrate_gyro()
+                    self._ever_calibrated = True
                 return True
         except Exception as e:
             log.warning("connect failed: %s", e)
         self.connected = False
         return False
+
+    def calibrate_center(self, samples: int = 60) -> None:
+        """Measure stick rest offsets so small hardware bias doesn't get
+        amplified by anti-deadzone into visible drift. Hands off sticks.
+        High-variance sample = stick was touched -> keep zeros, warn."""
+        xs: list[float] = []
+        ys: list[float] = []
+        rxs: list[float] = []
+        rys: list[float] = []
+        for _ in range(samples):
+            try:
+                st = self.reader.poll(timeout_ms=50)
+            except Exception:
+                break
+            if st is None:
+                continue
+            xs.append(st.lx)
+            ys.append(st.ly)
+            rxs.append(st.rx)
+            rys.append(st.ry)
+        if len(xs) < 10:
+            return
+        import statistics
+        spread = max(statistics.pstdev(xs), statistics.pstdev(ys),
+                     statistics.pstdev(rxs), statistics.pstdev(rys))
+        if spread > 0.15:
+            log.warning("center cal rejected (spread %.3f) - sticks were touched; "
+                        "keeping zero offsets", spread)
+            return
+        def avg(v: list[float]) -> float:
+            m = sum(v) / len(v)
+            return max(-0.2, min(0.2, m))
+        self.cx_l, self.cy_l, self.cx_r, self.cy_r = (
+            avg(xs), avg(ys), avg(rxs), avg(rys))
+        log.info("center cal L(%+.3f,%+.3f) R(%+.3f,%+.3f)",
+                 self.cx_l, self.cy_l, self.cx_r, self.cy_r)
 
     def calibrate_gyro(self, samples: int = 60) -> None:
         """Capture stationary gyro bias. Keep the controller still during start."""
@@ -122,7 +194,9 @@ class HidProToXInput:
         self.n_reports += 1
         cfg = self.cfg
         b = st.buttons
-        # Nintendo -> Xbox swap (same as SDL path)
+        # Sprint-slide-crouch triage: L3 is the ONLY legal thumb source for
+        # R3/L3 outputs. Rear C/Capture must never inject the thumb click,
+        # or crouch bleeds into sprint and COD slide-cancels feel random.
         n_b, n_a, n_y, n_x = b.get("B", False), b.get("A", False), b.get("Y", False), b.get("X", False)
         if cfg.swap_abxy:
             xa, xb, xx, xy = n_b, n_a, n_y, n_x
@@ -137,21 +211,34 @@ class HidProToXInput:
         du, dd = b.get("d_up", False), b.get("d_down", False)
         dl, dr = b.get("d_left", False), b.get("d_right", False)
 
-        lx = self.smoother.filter("lx", st.lx)
-        ly = self.smoother.filter("ly", st.ly)
-        rx = self.smoother.filter("rx", st.rx)
-        ry = self.smoother.filter("ry", st.ry)
+        lx = self.smoother.filter("lx", st.lx - self.cx_l)
+        ly = self.smoother.filter("ly", st.ly - self.cy_l)
+        rx = self.smoother.filter("rx", st.rx - self.cx_r)
+        ry = self.smoother.filter("ry", st.ry - self.cy_r)
 
         lt_f = 1.0 if zl else 0.0
         rt_f = 1.0 if zr else 0.0
         gx = st.gyro_x - self.gyro_center_x
         gy = st.gyro_y - self.gyro_center_y
+        self.ads_on, self.ads_changed_at = update_ads_state(
+            self.ads_on, lt_f, time.monotonic(), self.ads_changed_at)
+        self.sprint_on, self.sprint_changed_at = update_sprint_latch(
+            self.sprint_on, l3, time.monotonic(), self.sprint_changed_at)
         lx2, ly2, rx2, ry2 = process_sticks(
-            cfg, lx, ly, rx, ry, ads_held=lt_f > 0.2,
-            gyro_x=gx, gyro_y=gy)
+            cfg, lx, ly, rx, ry, ads_held=self.ads_on,
+            gyro_x=gx, gyro_y=gy, recenter_active=(lt_f > 0.2))
+        if self.sprint_on:
+            # Hold-to-sprint repair: the click eases tilt just under COD's
+            # sprint gate, so hold + full tilt must always send full tilt.
+            # Latched, not raw: one flicker frame must not drop the run.
+            lx2, ly2 = ensure_sprint_magnitude(lx2, ly2)
 
         out = {"A": xa, "B": xb, "X": xx, "Y": xy, "LB": lb, "RB": rb,
-               "L3": l3, "R3": r3, "BACK": minus, "START": plus, "GUIDE": home,
+               # Preserve raw L3 for steady-aim/hold-breath. In hipfire only,
+               # keep the sprint click alive through the debounce window so
+               # COD registers sprint even when the mechanical click is brief.
+               "L3": bool(l3 or (self.sprint_on and not self.ads_on)),
+               "R3": r3, "BACK": minus, "START": plus, "GUIDE": home,
                "DUP": du, "DDOWN": dd, "DLEFT": dl, "DRIGHT": dr}
         from switch2mod.rear import apply_rear, normalize_target
         trig = {"LT": lt_f, "RT": rt_f}
@@ -233,6 +320,10 @@ class HidProToXInput:
         try:
             while self.running:
                 t0 = time.perf_counter()
+                # Recomputed per loop so a live-apply polling change takes
+                # effect without restarting (virtual pad never drops).
+                hz = max(60, min(1000, getattr(self.cfg, "polling_hz", 500)))
+                dt = 1.0 / hz
                 if not self.connected:
                     # Hotplug: poll for a controller ~2x/sec until one appears.
                     now = time.monotonic()

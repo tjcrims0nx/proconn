@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from switch2mod.config import AppConfig
-from switch2mod.detection import ControllerDetector
+from switch2mod.detection import ControllerDetector, list_nintendo_hid
 from switch2mod.mapper import ProToXInput
 
 log = logging.getLogger("switch2mod.gui")
@@ -59,6 +59,33 @@ class ModGui:
         if title:
             tk.Label(card, text=title, font=("Segoe UI", 9),
                      fg=TEXT, bg=SURFACE).pack(anchor="w", padx=16, pady=(10, 6))
+
+        # Gentle surface transition on hover. Tk has no CSS transitions, so
+        # interpolate the panel and its immediate children over a few frames.
+        def paint(color: str) -> None:
+            card.configure(bg=color)
+            for child in card.winfo_children():
+                try:
+                    child.configure(bg=color)
+                except Exception:
+                    pass
+
+        def fade(start: tuple[int, int, int], end: tuple[int, int, int], step: int = 0):
+            if step > 8:
+                return
+            t = step / 8
+            rgb = tuple(round(start[i] + (end[i] - start[i]) * t) for i in range(3))
+            paint("#%02x%02x%02x" % rgb)
+            card.after(16, lambda: fade(start, end, step + 1))
+
+        def hover(_event):
+            fade((3, 23, 21), (5, 35, 30))
+
+        def leave(_event):
+            fade((5, 35, 30), (3, 23, 21))
+
+        card.bind("<Enter>", hover)
+        card.bind("<Leave>", leave)
         return card
 
     @staticmethod
@@ -68,6 +95,17 @@ class ModGui:
 
     # -- main -------------------------------------------------------------
     def run(self) -> None:
+        # DPI awareness must be set before Tk creates any window. Calling it
+        # later from the overlay is too late on scaled Windows displays and
+        # shifts the crosshair away from the game's true pixel center.
+        try:
+            import ctypes
+            try:
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)
+            except Exception:
+                ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
         import tkinter as tk
         from tkinter import ttk
 
@@ -176,7 +214,22 @@ class ModGui:
         root.bind_all("<End>", lambda _event: canvas.yview_moveto(1.0))
 
         # -- accent strip at top -----------------------------------------
-        tk.Frame(body, bg=NEON, height=3).pack(fill="x")
+        gradient = tk.Canvas(body, height=4, bg=BG, highlightthickness=0)
+        gradient.pack(fill="x")
+
+        def draw_gradient(_event=None):
+            gradient.delete("all")
+            width = max(1, gradient.winfo_width())
+            for x in range(0, width, 4):
+                t = x / width
+                r = round(18 + (8 - 18) * t)
+                g = round(245 + (190 - 245) * t)
+                b = round(160 + (115 - 160) * t)
+                gradient.create_rectangle(x, 0, x + 4, 4,
+                                          fill="#%02x%02x%02x" % (r, g, b),
+                                          outline="")
+
+        gradient.bind("<Configure>", draw_gradient)
 
         # -- header ------------------------------------------------------
         hdr = tk.Frame(body, bg=BG)
@@ -288,6 +341,7 @@ class ModGui:
             ("DUP", "d_up"), ("DDOWN", "d_down"),
             ("DLEFT", "d_left"), ("DRIGHT", "d_right"),
             ("GL", "GL"), ("GR", "GR"), ("C", "C"), ("CAP", "capture"),
+            ("RUM-L", "__rum_l"), ("RUM-R", "__rum_r"),
         )
         mon_card = self._card(body, "INPUT MONITOR - press anything")
         mon_grid = tk.Frame(mon_card, bg=SURFACE)
@@ -309,6 +363,19 @@ class ModGui:
                         fg=BG if on else TEXT_DIM)
                 except Exception:
                     pass
+            # Game -> pad rumble activity (receipt only; motors need the
+            # output encoding verified before we send bytes to hardware).
+            try:
+                import time as _t
+                r = self.runner
+                rumb = getattr(r, "last_rumble", (0, 0, 0.0)) if r else (0, 0, 0.0)
+                live = r is not None and (_t.monotonic() - rumb[2]) < 1.0 and (rumb[0] or rumb[1])
+                btn_widgets["RUM-L"].config(bg=ACCENT_WARN if live and rumb[0] else SURFACE2,
+                                            fg=BG if live and rumb[0] else TEXT_DIM)
+                btn_widgets["RUM-R"].config(bg=ACCENT_WARN if live and rumb[1] else SURFACE2,
+                                            fg=BG if live and rumb[1] else TEXT_DIM)
+            except Exception:
+                pass
 
         # ================================================================
         #PROOF CARD - what the GAME actually receives + overlay self-test
@@ -680,6 +747,48 @@ class ModGui:
         ttk.Checkbutton(xh_card, text="Lock overlay (click-through)",
                         variable=xh_lock).pack(anchor="w", padx=10, pady=(0, 4))
 
+        # -- position nudge: moves the live overlay 5px per click --
+        tk.Label(xh_card, text="POSITION (live nudge, px)",
+                 font=("Segoe UI", 8), fg=TEXT_DIM, bg=SURFACE).pack(anchor="w", padx=10)
+        nudge_row = tk.Frame(xh_card, bg=SURFACE)
+        nudge_row.pack(anchor="w", padx=10, pady=2)
+        nudge_lbl = tk.Label(nudge_row, text="+0,+0", font=("Consolas", 9),
+                             fg=NEON, bg=SURFACE, width=9)
+        nudge_lbl.grid(row=1, column=1, padx=2)
+
+        def _nudge(dx: int, dy: int) -> None:
+            try:
+                ch = self.cfg.crosshair
+                ch.offset_x = max(-500, min(500, int(ch.offset_x) + dx))
+                ch.offset_y = max(-500, min(500, int(ch.offset_y) + dy))
+                nudge_lbl.config(text=f"{ch.offset_x:+d},{ch.offset_y:+d}")
+                if self.profile_path:
+                    self.cfg.save(self.profile_path)
+                ov = self.overlay
+                if ov is not None and getattr(ov, "win", None) is not None:
+                    try:
+                        ov.cfg.offset_x = ch.offset_x
+                        ov.cfg.offset_y = ch.offset_y
+                        ov._place_box()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        for _txt, _dx, _dy in (("<", -5, 0), (">", 5, 0),
+                               ("^", 0, -5), ("v", 0, 5)):
+            tk.Button(nudge_row, text=_txt, command=lambda dx=_dx, dy=_dy: _nudge(dx, dy),
+                      font=("Segoe UI", 9, "bold"), fg=TEXT, bg=SURFACE2,
+                      activeforeground=NEON, activebackground=BORDER,
+                      relief="flat", bd=0, width=3, cursor="hand2").grid(
+                row={"<": 1, ">": 1, "^": 0, "v": 2}[_txt],
+                column={"<": 0, ">": 2, "^": 1, "v": 1}[_txt], padx=2, pady=1)
+        tk.Button(nudge_row, text="center", command=lambda: _nudge(
+            -int(self.cfg.crosshair.offset_x), -int(self.cfg.crosshair.offset_y)),
+            font=("Segoe UI", 8), fg=TEXT_DIM, bg=SURFACE,
+            activeforeground=NEON, relief="flat", bd=0,
+            cursor="hand2").grid(row=1, column=3, padx=6)
+
         # -- live crosshair shape preview ---------------------------------
         self._sep(xh_card)
         tk.Label(xh_card, text="PREVIEW", font=("Segoe UI Semibold", 8),
@@ -896,7 +1005,11 @@ class ModGui:
         swap_v = tk.BooleanVar(value=self.cfg.swap_abxy)
         hl_v = tk.BooleanVar(value=self.cfg.hair_trigger_left)
         hr_v = tk.BooleanVar(value=self.cfg.hair_trigger_right)
-        hid_v = tk.BooleanVar(value=self.hid_mode)
+        # PID 2069 is invisible/mis-mapped through SDL on this controller.
+        # Prefer the verified direct HID path automatically when present so
+        # L3/R3 and rear buttons reach XInput with the correct bits.
+        hid_present = bool(list_nintendo_hid())
+        hid_v = tk.BooleanVar(value=self.hid_mode or hid_present)
         auto_game_v = tk.BooleanVar(value=False)
 
         ttk.Checkbutton(opt_card, text="Swap ABXY (Nintendo -> Xbox, REQUIRED)",
@@ -910,6 +1023,19 @@ class ModGui:
                         variable=hid_v).pack(anchor="w", padx=10, pady=(1, 6))
         ttk.Checkbutton(opt_card, text="Auto-start when COD is detected",
                         variable=auto_game_v).pack(anchor="w", padx=10, pady=(1, 6))
+
+        # Keep the in-game layout choice explicit and live-applied. Previously
+        # cod_layout was profile-only, so changing COD controls in the GUI had
+        # no effect until the JSON was edited by hand.
+        layout_row = tk.Frame(opt_card, bg=SURFACE)
+        layout_row.pack(fill="x", padx=10, pady=(0, 6))
+        tk.Label(layout_row, text="COD button layout", font=("Segoe UI", 8),
+                 fg=TEXT_DIM, bg=SURFACE).pack(side="left")
+        cod_layout_v = tk.StringVar(value=str(getattr(self.cfg, "cod_layout", "bumper_jumper_tactical")))
+        ttk.Combobox(
+            layout_row, textvariable=cod_layout_v,
+            values=("bumper_jumper_tactical", "paddle_crouch", "destiny_default", "destiny_pvp"),
+            state="readonly", width=26).pack(side="right")
 
         self._sep(opt_card)
         tk.Label(opt_card, text="GYRO FOR BOTH STICKS", font=("Segoe UI", 9),
@@ -1129,26 +1255,54 @@ class ModGui:
         _viz_holder = {"lx": 0.0, "ly": 0.0, "rx": 0.0, "ry": 0.0,
                         "ads": False, "dead": False, "btns": {}}
         _capture_was_down = [False]
+        _gl_was_down = [False]
         _last_aim_pulse = [0.0]
 
         def _viz_reader():
             import pygame as pg
             from switch2mod.hid_reader import HidReader
-            # Direct HID is authoritative for Switch 2: SDL exposes a generic
-            # If_Hid pad that omits the real paddle/button layout.
+            # Share the runner HID state when a mapper is active. A SECOND
+            # HidReader handle on the same MI_00 device splits the report
+            # stream: viz steals frames (incl. the L3 click bit) and the
+            # mapper goes blind. Runner-first, own handle only pre-START.
+            hr = None
             try:
-                hr = HidReader()
-                if hr.open():
-                    _viz_holder["dead"] = None
-                    while True:
+                while True:
+                    r = getattr(self, "runner", None)
+                    st = getattr(r, "latest_state", None) if r is not None else None
+                    if st is not None and getattr(r, "running", False):
+                        _viz_holder.update(
+                            lx=st.lx, ly=st.ly, rx=st.rx, ry=st.ry,
+                            ads=bool(st.buttons.get("ZL") or st.buttons.get("GL")),
+                            btns=dict(st.buttons), dead=False)
+                        if hr is not None:
+                            try:
+                                hr.close()
+                            except Exception:
+                                pass
+                            hr = None
+                        time.sleep(0.005)
+                        continue
+                    if hr is None:
+                        hr = HidReader()
+                        if not hr.open():
+                            hr = None
+                    if hr is not None:
                         state = hr.poll(timeout_ms=50)
                         if state is None:
                             time.sleep(0.002)
                             continue
                         _viz_holder.update(
                             lx=state.lx, ly=state.ly, rx=state.rx, ry=state.ry,
-                            ads=bool(state.buttons.get("ZL")),
+                            ads=bool(state.buttons.get("ZL") or state.buttons.get("GL")),
                             btns=dict(state.buttons), dead=False)
+                        continue
+                    break
+            except Exception:
+                pass
+            try:
+                if hr is not None:
+                    hr.close()
             except Exception:
                 pass
             # SDL fallback for non-Switch controllers.
@@ -1188,18 +1342,30 @@ class ModGui:
                         pass
                 eff = live.apply_aim_dial()
                 v = _viz_holder
+                btns = v.get("btns", {}) or {}
+                gl_down = bool(btns.get("GL", False))
                 capture_down = bool(v.get("btns", {}).get("capture", False))
                 if capture_down and not _capture_was_down[0] and self.overlay is not None:
                     # Manual Capture press is the mark/pulse action. This
                     # never identifies or tracks targets automatically.
                     self.overlay.pulse()
                 _capture_was_down[0] = capture_down
+                if gl_down and not _gl_was_down[0] and self.overlay is not None:
+                    self.overlay.pulse(0.30)
+                _gl_was_down[0] = gl_down
                 # Safe visual feedback: only actual ADS + right-stick motion,
                 # never screen/target detection or automated aiming.
+                pry = v.get("ry", 0.0)
+                prx = v.get("rx", 0.0)
+                try:
+                    _px, _py, prx, pry = process_sticks(eff, v.get("lx", 0.0), v.get("ly", 0.0),
+                                                        prx, pry, ads_held=bool(v.get("ads", False)))
+                except Exception:
+                    pass
                 if (getattr(self.cfg.crosshair, "aim_sweep_pulse", True)
                         and v.get("ads", False)
-                        and math.hypot(v.get("rx", 0.0), v.get("ry", 0.0))
-                        >= getattr(self.cfg.crosshair, "aim_pulse_threshold", 0.35)
+                        and math.hypot(prx, pry)
+                        >= max(0.05, getattr(self.cfg.crosshair, "aim_pulse_threshold", 0.35) * 0.4)
                         and time.monotonic() - _last_aim_pulse[0]
                         >= getattr(self.cfg.crosshair, "aim_pulse_cooldown", 0.25)
                         and self.overlay is not None):
@@ -1235,13 +1401,26 @@ class ModGui:
                 if r is not None and getattr(r, "running", False):
                     if hasattr(r, "reader"):
                         st = getattr(r, "latest_state", None)
-                        return bool(st and st.buttons.get("ZL"))
+                        if st is not None:
+                            # GL fires LT (aim) and is the real ADS source in
+                            # HID mode, not just physical ZL. Missed GL here
+                            # is why ADS tighten + sweep pulse never fired.
+                            if bool(st.buttons.get("ZL")) or bool(st.buttons.get("GL")):
+                                return True
+                            return bool(getattr(r, "ads_on", False))
+                        return bool(getattr(r, "ads_on", False))
                     if hasattr(r, "read_triggers"):
                         lt, _ = r.read_triggers()
                         return lt > 0.2
+                    return bool(getattr(r, "ads_on", False))
             except Exception:
                 pass
-            return False
+            # Mapper idle (pre-START): fall back to the live viz reader so
+            # TEST CROSSHAIR + preview still track ADS from the pad.
+            try:
+                return bool(_viz_holder.get("ads", False))
+            except Exception:
+                return False
 
         # -- actions -----------------------------------------------------
         def get_sticks():
@@ -1274,26 +1453,29 @@ class ModGui:
                     f"C->{rm.c_as} CAP->{rm.capture_as}")
 
         def on_start():
-            _read_panel_into_cfg()
-            if self.profile_path:
+            # Outer guard: any unexpected failure must surface in the status
+            # bar and re-enable START, never wedge at "... STARTING".
+            try:
+                _on_start_inner()
+            except Exception as e:
+                log.warning("start failed: %s", e)
                 try:
-                    self.cfg.save(self.profile_path)
+                    set_status(f"Start failed: {e}", ACCENT_ERR)
                 except Exception:
                     pass
-            if self.runner is not None and getattr(self.runner, "running", False):
-                set_status(f"Already running ({_rear_summary()})", ACCENT_WARN)
-                return
-            # Never start over a zombie: a leftover thread still holding the
-            # HID device is exactly why a second START used to do nothing.
-            if self.runner_thread and self.runner_thread.is_alive():
-                self.runner_thread.join(timeout=2.0)
-            self.runner_thread = None
-            self.runner = None
-            start_btn.config(state="disabled", text="...  STARTING")
-            stop_btn.config(state="normal")
+                try:
+                    start_btn.config(state="normal", text=">  Start controller")
+                    stop_btn.config(state="disabled")
+                except Exception:
+                    pass
+
+        def _on_start_inner():
+            _read_panel_into_cfg()
             self.cfg.swap_abxy = bool(swap_v.get())
+            self.cfg.cod_layout = cod_layout_v.get().strip() or "bumper_jumper_tactical"
             self.cfg.hair_trigger_left = bool(hl_v.get())
             self.cfg.hair_trigger_right = bool(hr_v.get())
+            gyro_was_on = bool(getattr(self.cfg, "gyro_enabled", False))
             self.cfg.gyro_enabled = bool(gyro_on_v.get())
             self.cfg.gyro_left_enabled = bool(gyro_left_v.get())
             self.cfg.gyro_right_enabled = bool(gyro_right_v.get())
@@ -1316,7 +1498,56 @@ class ModGui:
                 set_status("Crosshair auto-enabled (required for ADS pulse)", NEON)
             self.cfg.crosshair = ch
             if self.profile_path:
-                self.cfg.save(self.profile_path)
+                try:
+                    self.cfg.save(self.profile_path)
+                except Exception:
+                    pass
+            mapper_active = bool(
+                self.runner is not None and
+                (getattr(self.runner, "running", False) or
+                 (self.runner_thread is not None and self.runner_thread.is_alive())))
+            if mapper_active:
+                # LIVE APPLY: push everything into the running mapper. The
+                # virtual pad never drops, so COD stays connected.
+                try:
+                    import copy
+                    eff = self.cfg.apply_aim_dial()
+                    self.runner.cfg = eff
+                    try:
+                        self.runner.smoother.set_amount(eff.smoothing)
+                    except Exception:
+                        pass
+                    if self.cfg.gyro_enabled and not gyro_was_on:
+                        cal = getattr(self.runner, "calibrate_gyro", None)
+                        if callable(cal):
+                            set_status("Calibrating gyro - hold pad still 3s", ACCENT_WARN)
+                            threading.Thread(target=cal, daemon=True).start()
+                    ov = self.overlay
+                    if ov is not None and getattr(ov, "win", None) is not None:
+                        try:
+                            ov.cfg = copy.deepcopy(ch)
+                        except Exception:
+                            pass
+                    elif ch.enabled:
+                        self.overlay = CrosshairOverlay(ch, is_ads_held=is_ads_held,
+                                                        get_sticks=get_sticks)
+                        if self.overlay.show():
+                            self.overlay.set_locked(bool(xh_lock.get()))
+                    set_status(f"Settings live - AIM {self.cfg.aim_assist:.0f} "
+                               f"({_rear_summary()}) - game untouched", NEON)
+                except Exception as e:
+                    set_status(f"Live apply failed: {e}", ACCENT_ERR)
+                return
+            # Never start over a zombie: a leftover thread still holding the
+            # HID device is exactly why a second START used to do nothing.
+            if self.runner_thread and self.runner_thread.is_alive():
+                self.runner_thread.join(timeout=2.0)
+            self.runner_thread = None
+            self.runner = None
+            start_btn.config(state="disabled", text="...  STARTING")
+            stop_btn.config(state="normal")
+            # Panel already read + saved above; reuse self.cfg as-is.
+            ch = self.cfg.crosshair
             try:
                 if self.overlay:
                     self.overlay.close()
@@ -1329,6 +1560,8 @@ class ModGui:
                                                 get_sticks=get_sticks)
                 if self.overlay.show():
                     self.overlay.set_locked(bool(xh_lock.get()))
+                    set_status(f"Crosshair active - {ch.style} {ch.color} at screen center",
+                               NEON)
                 else:
                     self.overlay = None
                     set_status("Crosshair failed to create; use borderless/windowed mode",
@@ -1419,6 +1652,32 @@ class ModGui:
             except Exception:
                 pass
             set_status("Stopped - press START to run again", ACCENT_WARN)
+
+        live_apply_job = [None]
+
+        def schedule_live_apply(*_args):
+            """Apply changed GUI values without dropping the virtual pad."""
+            if self.runner is None:
+                return
+            if live_apply_job[0] is not None:
+                try:
+                    root.after_cancel(live_apply_job[0])
+                except Exception:
+                    pass
+            live_apply_job[0] = root.after(120, on_start)
+
+        for var in list(state.values()) + [swap_v, hl_v, hr_v, hid_v,
+                                           gyro_on_v, gyro_left_v, gyro_right_v,
+                                           gyro_ads_v, cod_layout_v, xh_on,
+                                           xh_style, xh_color, xh_size,
+                                           xh_hide_ads, xh_lock, xh_movement,
+                                           xh_screen_sync, xh_bloom, xh_bloom_max,
+                                           xh_recovery, xh_ads_tighten,
+                                           xh_move_color, xh_cs_thresh]:
+            try:
+                var.trace_add("write", schedule_live_apply)
+            except Exception:
+                pass
             start_btn.config(state="normal", text=">  Start controller")
             stop_btn.config(state="disabled")
 

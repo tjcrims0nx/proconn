@@ -47,10 +47,13 @@ class StatusToast:
         self.win = tk.Toplevel(root)
         self.win.overrideredirect(True)
         self.win.attributes("-topmost", True)
-        self.win.configure(bg=BG)
+        # Use a dedicated color key so the toast has no opaque rectangular
+        # background around the visible panel on Windows.
+        self._key_color = "#010101"
+        self.win.configure(bg=self._key_color)
         self.win.geometry("+14+14")
 
-        frame = tk.Frame(self.win, bg=EDGE, bd=0)
+        frame = tk.Frame(self.win, bg=self._key_color, bd=0)
         frame.pack(padx=0, pady=0)
         panel = tk.Frame(frame, bg=BG)
         panel.pack(padx=2, pady=2)
@@ -75,10 +78,25 @@ class StatusToast:
         try:
             from switch2mod.crosshair import _set_click_through
             self.win.update_idletasks()
+            self.win.wm_attributes("-transparentcolor", self._key_color)
+            self.win.attributes("-transparentcolor", self._key_color)
+            self._force_colorkey()
             _set_click_through(self.win.winfo_id(), True)
         except Exception:
             pass
         self._tick()
+
+    def _force_colorkey(self) -> None:
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            hwnd = self.win.winfo_id()
+            style = user32.GetWindowLongW(hwnd, -20)
+            user32.SetWindowLongW(hwnd, -20, style | 0x80000)
+            cref = 1 | (1 << 8) | (1 << 16)
+            user32.SetLayeredWindowAttributes(hwnd, cref, 0, 0x1)
+        except Exception as e:
+            log.debug("toast transparency unavailable: %s", e)
 
     def _measure_rate(self) -> None:
         """Real rate: sample the mapper's report counter 1s apart."""
@@ -138,7 +156,8 @@ class StatusToast:
                     self.close()
                     return
                 try:
-                    self.win.attributes("-alpha", alpha)
+                    # Alpha on a color-keyed layered window can turn the key
+                    # area into a black rectangle. Close cleanly instead.
                     self.win.after(30, step)
                 except Exception:
                     self.close()

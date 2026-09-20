@@ -7,7 +7,7 @@ import time
 import pygame
 
 from switch2mod.config import AppConfig
-from switch2mod.sticks import Smoother, process_sticks, to_s16
+from switch2mod.sticks import Smoother, ensure_sprint_magnitude, process_sticks, to_s16, update_ads_state, update_sprint_latch
 
 log = logging.getLogger("switch2mod.mapper")
 
@@ -58,30 +58,58 @@ class ProToXInput:
         self.running = False
         self.connected = True
         self.n_reports = 0
+        self.last_rumble = (0, 0, 0.0)
+        try:
+            self.pad.register_notification(self._on_rumble)
+        except Exception as e:
+            log.warning("rumble notify unavailable: %s", e)
         self.smoother = Smoother(self.cfg.smoothing)
         self.cx_l = self.cy_l = self.cx_r = self.cy_r = 0.0
+        self.ads_on = False
+        self.ads_changed_at = 0.0
+        self.sprint_on = False
+        self.sprint_changed_at = 0.0
         self.turbo_state = False
         self.turbo_last = 0.0
         self.last_input_at = 0.0
         if cfg.auto_center:
             self.calibrate_center()
 
+    def _on_rumble(self, _client, _target, large_motor, small_motor, _led, _user=None) -> None:
+        """ViGEm thread callback: record scaled game rumble. Never touch Tk here."""
+        try:
+            s = max(0.0, min(2.0, float(self.cfg.rumble_scale)))
+            import time
+            self.last_rumble = (int(large_motor * s), int(small_motor * s), time.monotonic())
+        except Exception:
+            pass
+
     def calibrate_center(self, samples: int = 80) -> None:
-        sx = [0.0, 0.0, 0.0, 0.0]
-        n = 0
+        xs: list[float] = []
+        ys: list[float] = []
+        rxs: list[float] = []
+        rys: list[float] = []
         for _ in range(samples):
             pygame.event.pump()
             try:
-                for k in range(4):
-                    sx[k] += self.joy.get_axis(k)
-                n += 1
+                xs.append(self.joy.get_axis(0))
+                ys.append(self.joy.get_axis(1))
+                rxs.append(self.joy.get_axis(2))
+                rys.append(self.joy.get_axis(3))
             except Exception:
                 break
             time.sleep(0.002)
-        if n:
-            vals = [max(-0.2, min(0.2, v / n)) for v in sx]
-            self.cx_l, self.cy_l, self.cx_r, self.cy_r = vals
-            log.info("center L(%+.3f,%+.3f) R(%+.3f,%+.3f)", *vals)
+        if len(xs) < 10:
+            return
+        import statistics
+        spread = max(statistics.pstdev(xs), statistics.pstdev(ys),
+                     statistics.pstdev(rxs), statistics.pstdev(rys))
+        if spread > 0.15:
+            log.warning("center cal rejected (spread %.3f) - sticks were touched", spread)
+            return
+        vals = [max(-0.2, min(0.2, sum(v) / len(v))) for v in (xs, ys, rxs, rys)]
+        self.cx_l, self.cy_l, self.cx_r, self.cy_r = vals
+        log.info("center L(%+.3f,%+.3f) R(%+.3f,%+.3f)", *vals)
 
     def _btn(self, key: str) -> bool:
         i = BTN[key]
@@ -171,10 +199,22 @@ class ProToXInput:
             lx = ly = rx = ry = 0.0
 
         lt_f, rt_f = self.read_triggers()
-        lx2, ly2, rx2, ry2 = process_sticks(cfg, lx, ly, rx, ry, ads_held=lt_f > 0.2)
+        self.ads_on, self.ads_changed_at = update_ads_state(
+            self.ads_on, lt_f, time.monotonic(), self.ads_changed_at)
+        self.sprint_on, self.sprint_changed_at = update_sprint_latch(
+            self.sprint_on, bool(l3), time.monotonic(), self.sprint_changed_at)
+        lx2, ly2, rx2, ry2 = process_sticks(
+            cfg, lx, ly, rx, ry, ads_held=self.ads_on,
+            recenter_active=(lt_f > 0.2))
+        if self.sprint_on:
+            lx2, ly2 = ensure_sprint_magnitude(lx2, ly2)
 
         out = {"A": xa, "B": xb, "X": xx, "Y": xy, "LB": lb, "RB": rb,
-               "L3": l3, "R3": r3, "BACK": minus, "START": plus, "GUIDE": home,
+               # Preserve raw L3 for steady-aim/hold-breath. In hipfire only,
+               # keep the sprint click alive through the debounce window so
+               # COD registers sprint even when the mechanical click is brief.
+               "L3": bool(l3 or (self.sprint_on and not self.ads_on)),
+               "R3": r3, "BACK": minus, "START": plus, "GUIDE": home,
                "DUP": du, "DDOWN": dd, "DLEFT": dl, "DRIGHT": dr}
         from switch2mod.rear import apply_rear
         trig = {"LT": lt_f, "RT": rt_f}
@@ -239,6 +279,8 @@ class ProToXInput:
         try:
             while self.running:
                 t0 = time.perf_counter()
+                hz = max(60, min(1000, getattr(self.cfg, "polling_hz", 500)))
+                dt = 1.0 / hz
                 try:
                     self.step()
                 except pygame.error:

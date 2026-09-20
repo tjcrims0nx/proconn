@@ -37,7 +37,9 @@ class AppConfig:
     crosshair: CrosshairConfig = field(default_factory=CrosshairConfig)
     # aim / sticks (Gamesir-like dial, legal tuning only)
     aim_assist: float = 85.0          # 0-100 dial
-    ads_damping: float = 0.65         # 0.3-1.0
+    ads_damping: float = 0.85         # 0.3-1.0, sole ADS slowdown (booster feel)
+    ads_recenter_enabled: bool = True
+    ads_recenter_speed: float = 10.0  # residual-stick decay per second
     smoothing: float = 0.15           # 0-0.6, lower = snappier
     square_mapping: bool = True
     auto_center: bool = True

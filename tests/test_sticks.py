@@ -119,6 +119,14 @@ def test_hid05_rest_decodes_center():
     assert st.buttons and all(v is False for v in st.buttons.values())
 
 
+def test_hid05_left_stick_click_decodes_to_lstick():
+    from switch2mod.hid_reader import decode_report05
+    raw = bytearray.fromhex("053cab1400000000000000ff27821e9882")
+    raw[6] |= 0x08  # verified unified 0x05 LStick bit
+    st = decode_report05(bytes(raw))
+    assert st is not None and st.buttons["LStick"] is True
+
+
 def test_motion_decode_uses_confirmed_offsets():
     from switch2mod.hid_reader import decode_motion
     raw = bytearray(64)
@@ -129,6 +137,75 @@ def test_motion_decode_uses_confirmed_offsets():
     assert 0.49 < gx < 0.51
     assert -0.26 < gy < -0.24
     assert -0.26 < gz < -0.24
+
+
+def test_sprint_latch_rides_through_flicker():
+    from switch2mod.sticks import update_sprint_latch
+    on, t = update_sprint_latch(False, True, 1.0, 0.0)
+    assert on is True
+    on2, _ = update_sprint_latch(on, False, 1.10, t)
+    assert on2 is True  # 100ms dropout must not drop the run
+    on3, _ = update_sprint_latch(on, False, 1.50, t)
+    assert on3 is False
+
+
+def test_sprint_latch_ignores_flicker_after_long_hold():
+    """A missed report must not cut sprint after L3 has been held awhile."""
+    from switch2mod.sticks import update_sprint_latch
+    on, seen = update_sprint_latch(False, True, 1.0, 0.0)
+    on, seen = update_sprint_latch(on, True, 2.0, seen)
+    on, seen = update_sprint_latch(on, True, 3.0, seen)
+    on, _ = update_sprint_latch(on, False, 3.01, seen)
+    assert on is True
+
+
+def test_ads_latch_debounces_paddle_chatter():
+    from switch2mod.sticks import update_ads_state
+    on, t = update_ads_state(False, 1.0, 1.0, 0.0)
+    assert on is True
+    on2, _ = update_ads_state(on, 0.0, 1.05, t)
+    assert on2 is True  # 50ms dropout must not flip to hipfire shaping
+    on3, _ = update_ads_state(on, 0.0, 1.50, t)
+    assert on3 is False
+
+
+def test_ads_shaping_kills_antideadzone_jump():
+    from switch2mod.config import AppConfig
+    from switch2mod.sticks import process_sticks
+    cfg = AppConfig(aim_assist=100, right_deadzone=0.02,
+                    right_antideadzone=0.15, right_stick_sensitivity=2.0,
+                    curve_power=2.4, response_curve="aggressive",
+                    ads_damping=1.0, gyro_enabled=False)
+    _, _, hip, _ = process_sticks(cfg, 0.0, 0.0, 0.08, 0.0, ads_held=False)
+    _, _, scoped, _ = process_sticks(cfg, 0.0, 0.0, 0.08, 0.0, ads_held=True)
+    assert abs(scoped) < abs(hip)
+    # Booster check: big deliberate flicks must stay HOT scoped, not muddy.
+    # Old caps (sens 1.25 + flat curve + 0.7 damp) made ADS crawl.
+    _, _, hip_big, _ = process_sticks(cfg, 0.0, 0.0, 0.6, 0.0, ads_held=False)
+    _, _, scoped_big, _ = process_sticks(cfg, 0.0, 0.0, 0.6, 0.0, ads_held=True)
+    assert abs(scoped_big) >= 0.8 * abs(hip_big)
+
+
+def test_ads_recenter_reduces_residual_near_stick_center():
+    from switch2mod.config import AppConfig
+    from switch2mod.sticks import process_sticks
+    cfg = AppConfig(aim_assist=100, ads_recenter_enabled=True,
+                    ads_recenter_speed=10.0, ads_damping=1.0,
+                    right_deadzone=0.02, right_antideadzone=0.0,
+                    right_stick_sensitivity=1.0, gyro_enabled=False)
+    _, _, recentered, _ = process_sticks(cfg, 0.0, 0.0, 0.10, 0.0, ads_held=True)
+    cfg.ads_recenter_enabled = False
+    _, _, baseline, _ = process_sticks(cfg, 0.0, 0.0, 0.10, 0.0, ads_held=True)
+    assert abs(recentered) < abs(baseline)
+
+
+def test_l3_hold_boosts_partial_tilt_to_sprint_gate():
+    from switch2mod.sticks import ensure_sprint_magnitude
+    import math
+    x, y = ensure_sprint_magnitude(0.0, -0.80)
+    assert math.hypot(x, y) >= 0.999
+    x0, y0 = ensure_sprint_magnitude(0.0, 0.0)
+    assert (x0, y0) == (0.0, 0.0)
 
 
 def test_rear_paddle_mapping_sets_requested_outputs():

@@ -454,6 +454,18 @@ class CrosshairOverlay:
             self._tick_ms = 16  # ~60fps fallback
 
         try:
+            # Per-monitor DPI awareness BEFORE measuring anything: without
+            # this, Tk geometry uses scaled pixels while Win32 window rects
+            # are physical pixels, so the overlay lands off-center on any
+            # display above 100% scaling (e.g. 125%/150% laptops).
+            try:
+                import ctypes as _ct
+                try:
+                    _ct.windll.shcore.SetProcessDpiAwareness(2)
+                except Exception:
+                    _ct.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
             # Non-black key colour; the toplevel itself also gets it so no
             # pixel can ever render opaque by accident.
             key_color = "#010101"
@@ -552,10 +564,17 @@ class CrosshairOverlay:
             user32.EnumWindows(_cb, 0)
             if not match:
                 return None
-            rect = (wintypes.RECT)()
-            if not user32.GetWindowRect(match[0], ctypes.byref(rect)):
+            # Center on the drawable client area. GetWindowRect includes
+            # borders/title chrome and can put the overlay off the game's
+            # optical center in windowed or borderless modes.
+            rect = wintypes.RECT()
+            if not user32.GetClientRect(match[0], ctypes.byref(rect)):
                 return None
-            return ((rect.left + rect.right) // 2, (rect.top + rect.bottom) // 2)
+            origin = wintypes.POINT(rect.left, rect.top)
+            if not user32.ClientToScreen(match[0], ctypes.byref(origin)):
+                return None
+            return (origin.x + (rect.right - rect.left) // 2,
+                    origin.y + (rect.bottom - rect.top) // 2)
         except Exception:
             return None
 
