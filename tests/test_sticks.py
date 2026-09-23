@@ -244,3 +244,47 @@ def test_capture_requires_both_physical_sticks():
     status = stick_capture_status(captures)
     assert status["left_stick_complete"] is True
     assert status["right_stick_complete"] is False
+
+
+def test_legit_max_preset_pins_tuning_ceiling():
+    # apply_legit_max_preset() values are pinned so the GUI 'Load Legit
+    # Max preset' button cannot drift to illegal values, and the source
+    # cfg is never mutated (pure function).
+    from switch2mod.config import AppConfig
+    cfg = AppConfig()
+    preset = cfg.apply_legit_max_preset()
+    assert preset.aim_assist == 100.0
+    assert preset.right_deadzone == 0.02
+    assert preset.right_antideadzone == 0.15
+    assert preset.right_stick_sensitivity == 2.0
+    assert preset.curve_power == 2.4
+    assert preset.response_curve == "aggressive"
+    assert preset.smoothing == 0.10
+    assert cfg.aim_assist == 85.0  # source cfg never mutated
+
+
+def test_legit_max_preset_flows_through_ads_shaping():
+    # The max preset stays manual-input shaping: a held nudge walks through
+    # process_sticks untouched-by-targeting and stays live while scoped.
+    from switch2mod.config import AppConfig
+    from switch2mod.sticks import process_sticks
+    cfg = AppConfig().apply_legit_max_preset()
+    _, _, out, _ = process_sticks(cfg, 0.0, 0.0, 0.25, 0.0, ads_held=True)
+    assert out > 0.2  # shaping keeps the user's nudge live
+
+
+def test_no_automatic_aim():
+    # Guardrail: the codebase must stay manual-input-only per the hard
+    # refusal list in MEMORY.md (skills/card capability tier).
+    # Pattern excludes existing identifiers such as aim_pulse_threshold
+    # and the "no aimbot" comment in sticks.py.
+
+    import subprocess
+
+    r = subprocess.run(
+        ["git", "grep", "-l", "-E",
+         "_aimbot_|snap_to_target|target_lock|aim_lock|recoil_macro|_antiban|anti_ban"],
+        cwd=".", capture_output=True, text=True)
+    offenders = [line for line in r.stdout.splitlines()
+                 if line != "tests/test_sticks.py"]
+    assert not offenders, "Automatic-aim code detected: " + ", ".join(offenders)

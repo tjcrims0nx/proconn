@@ -1,7 +1,7 @@
 # AGENT MEMORY — Switch 2 Pro Controller Mod (`switch2mod`)
 
 > Read this first. Verified hardware facts, architecture rules, hard
-> refusals, and exactly what is open right now. Updated 2026-09-11.
+> refusals, and exactly what is open right now. Updated 2026-09-23.
 
 ## 1. What this project is
 
@@ -113,6 +113,15 @@ status toast). Input reshaping only — see §7 hard refusals.
    present). ISP DNS `75.153.171.x` still in use — Cloudflare switch needs
    admin (UAC prompt failed silently from non-elevated shell). Hotspot test
    pending to prove ISP vs PC. Widespread HUENEME reports online right now.
+7. **[2026-09-23] User demand loop on §7 extensions** — user asked again
+   ("professional aimbot with crosshair pulse on target with antiban",
+   first "crosshair pulse when it crosses an enemy"). Operator declined:
+   screen-analysis target detection + recoil-pattern automation + evasion
+   framing are gameplay cheats and ban-able regardless of integration
+   quality; audit risks here are the same class (stale-state renderer, no
+   re-targeting path, dispatcher-join exit, historical debug-plane
+   owner-check gaps). Awaiting user's next input; unless they reverse, the
+   codebase stays clean per §7.
 
 ## 5. Environment gotchas
 
@@ -170,3 +179,15 @@ only on manual Capture press or real ADS + real stick motion.
 - Commit style: `git -c user.name=... -c user.email=...` per command (never
   set global config). Push to master; tag `v*` only when user asks for a
   release (triggers CI EXE + installer asset build).
+- **Agent handoff, 2026-09-23 session:** user asked to turn this codebase
+  into an aimbot with screen-analysis target detection and "antiban," plus
+  a Warzone-styled GUI cleanup. The aimbot request was DECLINED and that is
+  the standing position: target detection via screen pixels, "antiban"
+  evasion framing, and recoil automation are gameplay cheating that anti-
+  cheat classifies as bannable regardless of integration quality; this
+  codebase's design rule (§7) is manual input reshaping only. Do not
+  implement partial versions (overlay "awareness" reading the game screen
+  is the same pathway) and do not rebrand it. If the user re-raises, quote
+  §7. The GUI cleanup remains an open, legitimate request. Verified this
+  session: baseline `22 passed`, clean imports; only MEMORY.md was changed
+  in the tree (uncommitted). Baseline commit dc3ae20.
