@@ -153,7 +153,7 @@ def cmd_watch_game(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(description="Switch 2 Pro -> XInput (enterprise)")
+    ap = argparse.ArgumentParser(description="ProConn: Switch 2 Pro -> XInput")
     ap.add_argument("--profile", default=None, help="JSON profile (default from --game)")
     ap.add_argument("--game", default="cod", choices=["cod", "destiny2", "d2"],
                     help="Game preset: cod or destiny2")

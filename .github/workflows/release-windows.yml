@@ -34,6 +34,7 @@ jobs:
       - name: Build EXE
         run: >-
           pyinstaller --noconfirm --clean --windowed --name Switch2ProMod
+          --icon assets/proconn.ico --add-data "assets;assets"
           --paths src --collect-all pygame
           --exclude-module vgamepad
           --add-data "src/switch2mod/_vendor;switch2mod/_vendor"
@@ -44,6 +45,7 @@ jobs:
         run: >-
           pyinstaller --noconfirm --clean --onefile --windowed
           --name Switch2ProModSetup
+          --icon assets/proconn.ico --add-data "assets;assets"
           --add-data "dist/Switch2ProMod;payload"
           installer.py
 

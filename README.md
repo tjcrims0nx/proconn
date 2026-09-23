@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Switch 2 Pro Mod" width="180">
+  <img src="assets/logo.png" alt="ProConn" width="180">
 </p>
 
-<h1 align="center">Switch 2 Pro Mod</h1>
+<h1 align="center">ProConn</h1>
 
 <p align="center">
   <strong>Use your Nintendo Switch 2 Pro Controller as a competitive Xbox pad on PC</strong>
@@ -25,7 +25,7 @@
 
 ## ✨ What is this?
 
-Switch 2 Pro Mod maps your **Nintendo Switch 2 Pro Controller** to a **virtual Xbox 360 gamepad** via [ViGEmBus](https://github.com/nefarius/ViGEmBus), giving you full compatibility with PC games that only support XInput — like Call of Duty and Destiny 2.
+ProConn maps your **Nintendo Switch 2 Pro Controller** to a **virtual Xbox 360 gamepad** via [ViGEmBus](https://github.com/nefarius/ViGEmBus), giving you full compatibility with PC games that only support XInput — like Call of Duty and Destiny 2.
 
 It's not just a remapper. It's a **full competitive tuning suite** inspired by Gamesir/SCUF/Cronus (but 100% legal — no injection, no memory editing, no game files touched).
 
@@ -41,6 +41,7 @@ It's not just a remapper. It's a **full competitive tuning suite** inspired by G
 | **ABXY Swap** | Nintendo ↔ Xbox layout swap (fixes in-game prompts) |
 | **Response Curves** | Linear, Aggressive, Precise, Raw — per-game tuning |
 | **ADS Damping** | Separate aim sensitivity while scoped |
+| **Multi-controller support** | Switch 2 Pro HID plus DualShock, DualSense, and Xbox via SDL |
 | **HID Direct Mode** | Bypasses SDL for Switch 2 Pro (057e:2069) detection |
 | **Dark Neon GUI** | Enterprise-grade interface with live stick visualizer |
 | **Auto-Reconnect** | Cable bumps? Reconnects in 1-2s, no restart needed |
@@ -178,7 +179,7 @@ python app.py --hid-calibrate
 python app.py --wired --hid --gui
 ```
 
-If HID is silent, enable reports once via [procon2tool](https://handheldlegend.github.io/procon2tool/) (WebUSB), then retry.
+If HID is silent, enable reports once via [procon2tool](https://handheldlegend.github.io/procon2tool/) (WebUSB), then retry. DualShock, DualSense, and Xbox controllers use SDL automatically; do not enable Switch 2 HID mode for them.
 
 ---
 

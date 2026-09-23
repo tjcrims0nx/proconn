@@ -18,6 +18,8 @@ log = logging.getLogger("switch2mod.detection")
 NINTENDO_VID = "57e"
 SWITCH_PIDS = ("2009", "200e", "2017", "2069", "2093", "2019")
 PRO_KEYWORDS = ("pro controller", "switch", "nintendo", "057e", "2093", "2069")
+DUALSHOCK_KEYWORDS = ("dualshock", "dual shock", "dualsense", "playstation", "ps4", "ps5")
+XBOX_KEYWORDS = ("xbox", "xinput", "x-box")
 
 
 class NoControllerError(Exception):
@@ -106,9 +108,10 @@ class ControllerInfo:
     is_pro: bool
     likely_wired: bool
     score: int
+    family: str = "generic"
 
     def label(self) -> str:
-        tag = "SWITCH-PRO" if self.is_pro else "other"
+        tag = self.family.upper()
         return (f"[{self.index}] {self.name} | vid={self.vid} pid={self.pid} "
                 f"bus={self.bus} a={self.axes} b={self.buttons} [{tag}]")
 
@@ -125,6 +128,18 @@ def parse_guid(guid: object) -> dict[str, str]:
     except Exception:
         pass
     return info
+
+
+def controller_family(name: str, vid: str = "") -> str:
+    """Classify common SDL pads without changing their raw input path."""
+    text = str(name or "").lower()
+    if any(word in text for word in DUALSHOCK_KEYWORDS) or vid.lower() == "054c":
+        return "dualshock"
+    if any(word in text for word in XBOX_KEYWORDS) or vid.lower() == "045e":
+        return "xbox"
+    if any(word in text for word in PRO_KEYWORDS) or vid.lower() == NINTENDO_VID:
+        return "switch-pro"
+    return "generic"
 
 
 class ControllerDetector:
@@ -147,7 +162,8 @@ class ControllerDetector:
                 gi = parse_guid(guid)
                 ln = name.lower()
                 vid_match = gi["vid"] == NINTENDO_VID
-                name_match = any(k in ln for k in PRO_KEYWORDS)
+                family = controller_family(name, gi["vid"])
+                name_match = family == "switch-pro"
                 is_pro = bool(vid_match or name_match)
                 bus = gi["bus"]
                 if bus == "?":
@@ -170,7 +186,8 @@ class ControllerDetector:
                 if 4 <= na <= 8 and nb >= 10:
                     score += 5
                 out.append(ControllerInfo(i, name, str(guid), gi["vid"], gi["pid"],
-                                          bus, na, nb, nh, is_pro, likely_wired, score))
+                                           bus, na, nb, nh, is_pro, likely_wired, score,
+                                           family))
             except Exception as e:
                 log.warning("index %d unreadable: %s", i, e)
         out.sort(key=lambda c: c.score, reverse=True)

@@ -9,16 +9,16 @@ import threading
 import tkinter as tk
 from pathlib import Path
 
-BG = "#00100f"
-PANEL = "#06221d"
-PANEL2 = "#0a3028"
-NEON = "#12f5a0"
-GLOW = "#087b59"
-GLOW_DARK = "#064a39"
-TEXT = "#effff8"
-DIM = "#86a79c"
-WARN = "#ffc56b"
-LOG_PATH = Path(os.environ.get("TEMP", str(Path.home()))) / "Switch2ProMod-install.log"
+BG = "#0b1117"
+PANEL = "#121b24"
+PANEL2 = "#192633"
+NEON = "#6ee7b7"
+GLOW = "#38bdf8"
+GLOW_DARK = "#263746"
+TEXT = "#edf4f8"
+DIM = "#8fa3b2"
+WARN = "#fbbf75"
+LOG_PATH = Path(os.environ.get("TEMP", str(Path.home()))) / "ProConn-install.log"
 
 
 def log_line(msg: str) -> None:
@@ -32,10 +32,16 @@ def log_line(msg: str) -> None:
 class Installer:
     def __init__(self) -> None:
         self.root = tk.Tk()
-        self.root.title("Switch 2 Pro Mod Setup")
-        self.root.geometry("600x470")
+        self.root.title("ProConn Setup")
+        self.root.geometry("680x560")
         self.root.resizable(False, False)
         self.root.configure(bg=BG)
+        icon = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "assets" / "proconn.ico"
+        if icon.exists():
+            try:
+                self.root.iconbitmap(str(icon))
+            except Exception:
+                pass
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.running = False
         self.done = False
@@ -46,27 +52,46 @@ class Installer:
         self._animate()
 
     def _build(self) -> None:
-        tk.Frame(self.root, bg=NEON, height=3).pack(fill="x")
-        tk.Label(self.root, text="SWITCH 2 PRO MOD", font=("Segoe UI", 20, "bold"),
-                 fg=NEON, bg=BG).pack(pady=(24, 2))
-        tk.Label(self.root, text="Professional controller tuning for Windows",
-                 font=("Segoe UI", 10), fg=DIM, bg=BG).pack()
+        tk.Frame(self.root, bg=NEON, height=2).pack(fill="x")
+        hero = tk.Frame(self.root, bg=BG)
+        hero.pack(fill="x", padx=30, pady=(22, 8))
+        logo_path = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "assets" / "logo.png"
+        try:
+            image = tk.PhotoImage(file=str(logo_path))
+            factor = max(1, image.width() // 92)
+            self.logo_image = image.subsample(factor, factor)
+            tk.Label(hero, image=self.logo_image, bg=BG).pack(side="left", padx=(0, 16))
+        except Exception as e:
+            log_line("logo load: " + str(e))
+        hero_copy = tk.Frame(hero, bg=BG)
+        hero_copy.pack(side="left", anchor="center")
+        tk.Label(hero_copy, text="PROCONN", font=("Segoe UI", 22, "bold"),
+                 fg=TEXT, bg=BG).pack(anchor="w")
+        tk.Label(hero_copy, text="Controller connectivity platform",
+                 font=("Segoe UI", 10), fg=DIM, bg=BG).pack(anchor="w")
+        tk.Label(hero, text="SETUP", font=("Consolas", 8, "bold"),
+                 fg=NEON, bg=PANEL2, padx=9, pady=5).pack(side="right", anchor="n")
 
-        self.canvas = tk.Canvas(self.root, width=300, height=210, bg=BG,
+        panel = tk.Frame(self.root, bg=PANEL, highlightthickness=1,
+                         highlightbackground="#263746")
+        panel.pack(fill="both", expand=True, padx=30, pady=(8, 16))
+        tk.Label(panel, text="INSTALLATION STATUS", font=("Consolas", 8, "bold"),
+                 fg=DIM, bg=PANEL).pack(anchor="w", padx=20, pady=(14, 0))
+        self.canvas = tk.Canvas(panel, width=300, height=210, bg=PANEL,
                                 highlightthickness=0)
-        self.canvas.pack(pady=18)
-        self.status = tk.Label(self.root, text="Ready to install", font=("Segoe UI", 11),
-                               fg=TEXT, bg=BG)
+        self.canvas.pack(pady=8)
+        self.status = tk.Label(panel, text="Ready to install", font=("Segoe UI", 11),
+                               fg=TEXT, bg=PANEL)
         self.status.pack()
-        self.detail = tk.Label(self.root, text="", font=("Consolas", 8),
-                               fg=DIM, bg=BG)
+        self.detail = tk.Label(panel, text="", font=("Consolas", 8),
+                               fg=DIM, bg=PANEL)
         self.detail.pack(pady=5)
-        self.button = tk.Button(self.root, text="INSTALL", command=self.start,
+        self.button = tk.Button(panel, text="INSTALL", command=self.start,
                                 font=("Segoe UI", 11, "bold"), fg=BG, bg=NEON,
-                                activebackground="#7affc2", relief="flat", bd=0,
+                                activebackground="#a7f3d0", relief="flat", bd=0,
                                 padx=34, pady=9, cursor="hand2")
         self.button.pack(pady=14)
-        self.close_button = tk.Button(self.root, text="CLOSE", command=self.close,
+        self.close_button = tk.Button(panel, text="CLOSE", command=self.close,
                                       font=("Segoe UI", 8), fg=DIM, bg=BG,
                                       activeforeground=TEXT, activebackground=BG,
                                       relief="flat", bd=0, cursor="hand2")
@@ -184,7 +209,7 @@ class Installer:
         try:
             exe = self._install_dir / "Switch2ProMod.exe"
             shortcut = (Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" /
-                        "Start Menu" / "Programs" / "Switch 2 Pro Mod.lnk")
+                        "Start Menu" / "Programs" / "ProConn.lnk")
             shortcut.parent.mkdir(parents=True, exist_ok=True)
             ps = ("$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{shortcut}');"
                   "$s.TargetPath='{exe}';$s.WorkingDirectory='{wd}';$s.Save()")
@@ -219,14 +244,14 @@ class Installer:
             log_line("skipped: " + ", ".join(skipped))
         else:
             self.status.config(text="Installation complete", fg=NEON)
-            self.detail.config(text="Switch 2 Pro Mod is ready")
+        self.detail.config(text="ProConn is ready")
         self.button.config(state="normal", text="LAUNCH", command=self.launch)
 
     def _failed(self, error: str) -> None:
         self.running = False
         log_line("FAILED: " + error)
         self.status.config(text="Installation failed", fg=WARN)
-        self.detail.config(text=(error[:70] + "  (log: %TEMP%\\Switch2ProMod-install.log)"))
+        self.detail.config(text=(error[:70] + "  (log: %TEMP%\\ProConn-install.log)"))
         self.button.config(state="normal", text="RETRY", command=self.start)
 
     def launch(self) -> None:

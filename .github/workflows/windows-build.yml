@@ -50,8 +50,9 @@ jobs:
         run: |
           pyinstaller --onefile --windowed ^
             --name "Switch2ProMod" ^
-            --icon NONE ^
+            --icon assets/proconn.ico ^
             --exclude-module vgamepad ^
+            --add-data "assets;assets" ^
             --add-data "cod_profile.json;." ^
             --add-data "destiny2_profile.json;." ^
             --add-data "src/switch2mod/_vendor;switch2mod/_vendor" ^
@@ -74,8 +75,9 @@ jobs:
         run: |
           pyinstaller --onefile ^
             --name "Switch2ProMod-console" ^
-            --icon NONE ^
+            --icon assets/proconn.ico ^
             --exclude-module vgamepad ^
+            --add-data "assets;assets" ^
             --add-data "cod_profile.json;." ^
             --add-data "destiny2_profile.json;." ^
             --add-data "src/switch2mod/_vendor;switch2mod/_vendor" ^

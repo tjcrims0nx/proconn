@@ -15,21 +15,23 @@ from switch2mod.mapper import ProToXInput
 log = logging.getLogger("switch2mod.gui")
 
 # -- Colour palette ----------------------------------------------------------
-BG          = "#00100f"
-SURFACE     = "#031715"
-SURFACE2    = "#08231f"
-BORDER      = "#0a2924"
-NEON        = "#12f5a0"
-NEON_DIM    = "#0fc77f"
-NEON_GLOW   = "#12f5a01c"
-ACCENT2     = "#7affc2"
-ACCENT_WARN = "#ffc56b"
-ACCENT_ERR  = "#ff6c80"
-TEXT        = "#f1faf7"
-TEXT_DIM    = "#7f9d95"
-VIZ_BG      = "#021311"
-VIZ_GRID    = "#0d332c"
-VIZ_DZ      = "#1b5145"
+BG          = "#0b1117"
+SURFACE     = "#121b24"
+SURFACE2    = "#192633"
+BORDER      = "#263746"
+NEON        = "#6ee7b7"
+NEON_DIM    = "#38bdf8"
+NEON_GLOW   = "#6ee7b71c"
+ACCENT2     = "#a7f3d0"
+ACCENT_WARN = "#fbbf75"
+ACCENT_ERR  = "#fb7185"
+TEXT        = "#edf4f8"
+TEXT_DIM    = "#8fa3b2"
+VIZ_BG      = "#0c151e"
+VIZ_GRID    = "#203747"
+VIZ_DZ      = "#315568"
+APPBAR      = "#101923"
+NAV_BG      = "#0f1922"
 
 
 class ModGui:
@@ -48,14 +50,61 @@ class ModGui:
     # -- helpers ----------------------------------------------------------
     @staticmethod
     def _card(parent, title: str | None = None, pad: int = 10):
-        """Create a dark card frame with optional header label."""
+        """Create an inset enterprise panel with softly rounded corners."""
         import tkinter as tk
         outer = tk.Frame(parent, bg=BG)
         outer.pack(fill="x", padx=20, pady=(10, 0))
-        # Soft dashboard cards: no hard 1px outlines or nested boxed borders.
-        card = tk.Frame(outer, bg=SURFACE, bd=0,
-                        highlightthickness=0)
-        card.pack(fill="x", ipadx=pad + 2, ipady=max(7, pad - 1))
+        panel = tk.Canvas(outer, height=92, bg=BG, bd=0, highlightthickness=0)
+        panel.pack(fill="x")
+        card = tk.Frame(panel, bg=SURFACE, bd=0, highlightthickness=0)
+        window_id = panel.create_window(14, 12, anchor="nw", window=card)
+
+        def rounded_points(width: int, height: int, radius: int = 14):
+            radius = max(2, min(radius, width // 2, height // 2))
+            points = []
+            for cx, cy, start in ((width - radius, radius, -90),
+                                  (width - radius, height - radius, 0),
+                                  (radius, height - radius, 90),
+                                  (radius, radius, 180)):
+                for step in range(7):
+                    angle = math.radians(start + step * 15)
+                    points.append((cx + radius * math.cos(angle),
+                                   cy + radius * math.sin(angle)))
+            return [value for point in points for value in point]
+
+        def paint_panel(_event=None):
+            panel.delete("surface")
+            width = max(40, panel.winfo_width() - 2)
+            height = max(40, panel.winfo_height() - 2)
+            panel.create_polygon(*rounded_points(width, height), fill="#172531",
+                                 outline=BORDER, width=1, smooth=True, tags="surface")
+            panel.tag_lower("surface")
+            panel.itemconfigure(window_id, width=max(20, width - 28))
+
+        def sync_panel(_event=None):
+            panel.configure(height=max(72, card.winfo_reqheight() + 24))
+            paint_panel()
+
+        panel.bind("<Configure>", paint_panel)
+        card.bind("<Configure>", sync_panel)
+        # Soft dashboard cards use generous inset spacing rather than hard
+        # nested borders, keeping the surface calm at high information density.
+        card.configure(padx=pad + 2, pady=max(7, pad - 1))
+        accent = tk.Canvas(card, height=2, bg=SURFACE, highlightthickness=0)
+        accent.pack(fill="x", padx=12, pady=(0, 5))
+
+        def draw_card_accent(_event=None):
+            accent.delete("all")
+            width = max(1, accent.winfo_width())
+            for x in range(0, width, 8):
+                t = x / width
+                r = round(18 + (90 - 18) * t)
+                g = round(245 + (120 - 245) * t)
+                b = round(160 + (255 - 160) * t)
+                accent.create_rectangle(x, 0, x + 8, 2,
+                                        fill="#%02x%02x%02x" % (r, g, b), outline="")
+
+        accent.bind("<Configure>", draw_card_accent)
         if title:
             tk.Label(card, text=title, font=("Segoe UI", 9),
                      fg=TEXT, bg=SURFACE).pack(anchor="w", padx=16, pady=(10, 6))
@@ -110,9 +159,9 @@ class ModGui:
         from tkinter import ttk
 
         root = tk.Tk()
-        root.title("Switch 2 Pro Tweaks")
-        root.geometry("1280x810")
-        root.minsize(980, 640)
+        root.title("ProConn")
+        root.geometry("1180x760")
+        root.minsize(900, 600)
         root.configure(bg=BG)
 
         # -- ttk theme / style -------------------------------------------
@@ -162,13 +211,40 @@ class ModGui:
 
         workspace = tk.Frame(outer, bg=BG)
         workspace.pack(fill="both", expand=True)
-        topbar = tk.Frame(workspace, bg="#021210", height=58,
+        topbar = tk.Frame(workspace, bg=APPBAR, height=64,
                           highlightthickness=0)
         topbar.pack(fill="x")
         topbar.pack_propagate(False)
-        tk.Label(topbar, text="Switch 2 Pro Controller",
-                 font=("Segoe UI", 10), fg=TEXT_DIM,
-                 bg="#021210").pack(pady=19)
+        top_gradient = tk.Canvas(topbar, height=2, bg=APPBAR,
+                                 highlightthickness=0)
+        top_gradient.pack(side="bottom", fill="x")
+
+        brand = tk.Frame(topbar, bg=APPBAR)
+        brand.pack(side="left", padx=18, pady=10)
+        tk.Label(brand, text="PROCONN", font=("Segoe UI", 14, "bold"),
+                 fg=NEON, bg=APPBAR).pack(anchor="w")
+        tk.Label(brand, text="CONTROLLER LINK  /  LOCAL DEV",
+                 font=("Consolas", 7), fg=TEXT_DIM,
+                 bg=APPBAR).pack(anchor="w")
+        top_meta = tk.Frame(topbar, bg=APPBAR)
+        top_meta.pack(side="right", padx=18, pady=18)
+        for text, color in (("USB / HID READY", NEON_DIM), ("XINPUT OUTPUT", ACCENT2)):
+            tk.Label(top_meta, text=f"  {text}  ", font=("Consolas", 8, "bold"),
+                     fg=color, bg=SURFACE2, padx=5, pady=4).pack(side="left", padx=3)
+
+        def draw_top_gradient(_event=None):
+            top_gradient.delete("all")
+            width = max(1, top_gradient.winfo_width())
+            for x in range(0, width, 6):
+                t = x / width
+                r = round(18 + (100 - 18) * t)
+                g = round(245 + (125 - 245) * t)
+                b = round(160 + (255 - 160) * t)
+                top_gradient.create_rectangle(x, 0, x + 6, 2,
+                                              fill="#%02x%02x%02x" % (r, g, b),
+                                              outline="")
+
+        top_gradient.bind("<Configure>", draw_top_gradient)
 
         content = tk.Frame(workspace, bg=BG)
         content.pack(fill="both", expand=True)
@@ -234,7 +310,7 @@ class ModGui:
         # -- header ------------------------------------------------------
         hdr = tk.Frame(body, bg=BG)
         hdr.pack(fill="x", padx=16, pady=(12, 0))
-        ttk.Label(hdr, text="SWITCH 2 PRO MOD", style="Title.TLabel").pack(
+        ttk.Label(hdr, text="PROCONN", style="Title.TLabel").pack(
             anchor="w")
         mode = "WIRED 1000 Hz" if (self.wired or self.cfg.wired_mode) else "WIRELESS"
         game = getattr(self.cfg, "game", "cod").upper()
@@ -250,13 +326,74 @@ class ModGui:
                             fg=BG, bg=color, bd=0, padx=6, pady=1)
             pill.pack(side="left", padx=(0, 6))
 
+        # Full dashboard shell: persistent navigation on the left, one clear
+        # working surface on the right. The existing cards remain reusable,
+        # but the app no longer feels like one long settings document.
+        dashboard = tk.Frame(body, bg=BG)
+        dashboard.pack(fill="both", expand=True, padx=10, pady=(18, 0))
+        nav = tk.Frame(dashboard, bg=NAV_BG, width=196,
+                       highlightthickness=1, highlightbackground=BORDER)
+        nav.pack(side="left", fill="y", padx=(0, 12))
+        nav.pack_propagate(False)
+        tk.Label(nav, text="WORKSPACE", font=("Consolas", 8, "bold"),
+                 fg=TEXT_DIM, bg=NAV_BG).pack(anchor="w", padx=16, pady=(18, 12))
+        tab_line = tk.Canvas(nav, width=3, bg=BORDER, highlightthickness=0)
+        tab_line.pack(side="right", fill="y", padx=(0, 2))
+        tab_content = tk.Frame(dashboard, bg=BG)
+        tab_content.pack(side="left", fill="both", expand=True)
+        tab_frames = {
+            "MONITOR": tk.Frame(tab_content, bg=BG),
+            "TUNING": tk.Frame(tab_content, bg=BG),
+            "OVERLAY": tk.Frame(tab_content, bg=BG),
+        }
+        tab_buttons: dict[str, tk.Label] = {}
+        active_tab = ["MONITOR"]
+
+        def select_tab(name: str) -> None:
+            active_tab[0] = name
+            for frame in tab_frames.values():
+                frame.pack_forget()
+            tab_frames[name].pack(fill="both", expand=True)
+            for key, button in tab_buttons.items():
+                button.configure(bg=SURFACE2 if key == name else BG,
+                                 fg=NEON if key == name else TEXT_DIM)
+            tab_line.delete("all")
+            height = max(1, tab_line.winfo_height())
+            y = {"MONITOR": 42, "TUNING": 110, "OVERLAY": 178}[name]
+            tab_line.create_rectangle(0, y, 3, min(height, y + 48), fill=NEON, outline="")
+            canvas.yview_moveto(0.0)
+
+        for name, subtitle, glyph in (("MONITOR", "INPUT / STATUS", "01"),
+                                      ("TUNING", "AIM / CONTROLLER", "02"),
+                                      ("OVERLAY", "CROSSHAIR / DISPLAY", "03")):
+            button = tk.Label(nav, text=f"  {glyph}   {name}\n       {subtitle}",
+                              justify="left", anchor="w",
+                              font=("Segoe UI Semibold", 9),
+                              bg=SURFACE2 if name == active_tab[0] else BG,
+                              fg=NEON if name == active_tab[0] else TEXT_DIM,
+                              padx=10, pady=9, cursor="hand2")
+            button.pack(fill="x", padx=10, pady=3)
+            button.bind("<Button-1>", lambda _event, key=name: select_tab(key))
+            button.bind("<Enter>", lambda _event, b=button: b.configure(fg=ACCENT2))
+            button.bind("<Leave>", lambda _event, b=button, key=name: b.configure(
+                fg=NEON if active_tab[0] == key else TEXT_DIM))
+            tab_buttons[name] = button
+        tk.Frame(nav, bg=BORDER, height=1).pack(fill="x", padx=16, pady=(18, 14))
+        tk.Label(nav, text="PROCONN\nLOCAL CONTROL PLANE", justify="left",
+                 font=("Consolas", 8), fg=TEXT_DIM, bg=NAV_BG).pack(
+            anchor="w", padx=16)
+        select_tab("MONITOR")
+        root.bind_all("<Control-Key-1>", lambda _event: select_tab("MONITOR"))
+        root.bind_all("<Control-Key-2>", lambda _event: select_tab("TUNING"))
+        root.bind_all("<Control-Key-3>", lambda _event: select_tab("OVERLAY"))
+
         state: dict[str, tk.DoubleVar] = {}
         viz_cache: dict[str, object] = {"joy": None, "idx": None}
 
         # ================================================================
         #CONNECTION CARD
         # ================================================================
-        conn_card = self._card(body, "CONNECTION")
+        conn_card = self._card(tab_frames["MONITOR"], "CONNECTION")
         conn_inner = tk.Frame(conn_card, bg=SURFACE)
         conn_inner.pack(fill="x", padx=10, pady=4)
         dot = tk.Canvas(conn_inner, width=16, height=16, bg=SURFACE,
@@ -274,7 +411,7 @@ class ModGui:
         # ================================================================
         #STICK VISUALIZER CARD
         # ================================================================
-        viz_card = self._card(body, "STICK VISUALIZER")
+        viz_card = self._card(tab_frames["MONITOR"], "STICK VISUALIZER")
         viz_row = tk.Frame(viz_card, bg=SURFACE)
         viz_row.pack(pady=4)
 
@@ -343,7 +480,7 @@ class ModGui:
             ("GL", "GL"), ("GR", "GR"), ("C", "C"), ("CAP", "capture"),
             ("RUM-L", "__rum_l"), ("RUM-R", "__rum_r"),
         )
-        mon_card = self._card(body, "INPUT MONITOR - press anything")
+        mon_card = self._card(tab_frames["MONITOR"], "INPUT MONITOR - press anything")
         mon_grid = tk.Frame(mon_card, bg=SURFACE)
         mon_grid.pack(fill="x", padx=10, pady=6)
         btn_widgets: dict[str, object] = {}
@@ -380,7 +517,7 @@ class ModGui:
         # ================================================================
         #PROOF CARD - what the GAME actually receives + overlay self-test
         # ================================================================
-        proof_card = self._card(body, "PROOF IT WORKS IN-GAME")
+        proof_card = self._card(tab_frames["MONITOR"], "PROOF IT WORKS IN-GAME")
         proof_lbl = tk.Label(proof_card, text="Start the mod, then move sticks / press buttons.",
                              font=("Consolas", 8), fg=TEXT_DIM, bg=SURFACE,
                              justify="left")
@@ -606,7 +743,7 @@ class ModGui:
         # ================================================================
         #AIM TUNING CARD
         # ================================================================
-        aim_card = self._card(body, "AIM TUNING")
+        aim_card = self._card(tab_frames["TUNING"], "AIM TUNING")
 
         def slider(parent, label: str, key: str, lo: float, hi: float,
                    fmt: str = ".0f"):
@@ -621,18 +758,56 @@ class ModGui:
                                font=("Consolas", 9, "bold"),
                                fg=NEON, bg=SURFACE, width=6, anchor="e")
             val_lbl.pack(side="right")
-            s = ttk.Scale(parent, from_=lo, to=hi, variable=v,
-                          orient="horizontal",
-                          style="Green.Horizontal.TScale")
+            # Native ttk sliders look dated and vary between Windows themes.
+            # This canvas slider gives every control the same rounded, crisp
+            # surface while keeping the existing Tk variable contract.
+            s = tk.Canvas(parent, height=28, bg=SURFACE,
+                          highlightthickness=0, takefocus=True, cursor="hand2")
             s.pack(fill="x", padx=10, pady=(0, 2))
             state[key] = v
 
-            def _upd(*_):
+            def _position(value: float) -> float:
+                width = max(40, s.winfo_width())
+                return 12 + (width - 24) * ((value - lo) / max(1e-9, hi - lo))
+
+            def _draw(*_):
                 try:
-                    val_lbl.config(text=f"{v.get():{fmt}}")
+                    value = max(lo, min(hi, float(v.get())))
+                    val_lbl.config(text=f"{value:{fmt}}")
+                    s.delete("all")
+                    y = 14
+                    left, right = 12, max(24, s.winfo_width() - 12)
+                    x = _position(value)
+                    s.create_line(left, y, right, y, fill=BORDER, width=7,
+                                  capstyle="round")
+                    s.create_line(left, y, x, y, fill=NEON_DIM, width=7,
+                                  capstyle="round")
+                    s.create_oval(x - 7, y - 7, x + 7, y + 7,
+                                  fill=NEON, outline=ACCENT2, width=1)
+                    s.create_oval(x - 2, y - 2, x + 2, y + 2,
+                                  fill=BG, outline="")
                 except Exception:
                     pass
-            v.trace_add("write", _upd)
+
+            def _set_from_event(event):
+                width = max(40, s.winfo_width())
+                ratio = max(0.0, min(1.0, (event.x - 12) / max(1, width - 24)))
+                v.set(lo + ratio * (hi - lo))
+                s.focus_set()
+
+            def _key(event):
+                step = (hi - lo) / 100.0
+                if event.keysym in ("Left", "Down"):
+                    v.set(float(v.get()) - step)
+                elif event.keysym in ("Right", "Up"):
+                    v.set(float(v.get()) + step)
+
+            v.trace_add("write", _draw)
+            s.bind("<Configure>", _draw)
+            s.bind("<Button-1>", _set_from_event)
+            s.bind("<B1-Motion>", _set_from_event)
+            s.bind("<Key>", _key)
+            _draw()
             return v
 
         tk.Label(aim_card, text="Legal tuning only - adjust the dial for aim feel.",
@@ -686,7 +861,7 @@ class ModGui:
         # ================================================================
         from switch2mod.crosshair import STYLES, COLORS, CrosshairOverlay
 
-        xh_card = self._card(body, "CROSSHAIR OVERLAY")
+        xh_card = self._card(tab_frames["OVERLAY"], "CROSSHAIR OVERLAY")
         tk.Label(xh_card, text="Windowed / Borderless required in-game",
                  font=("Segoe UI", 8), fg=TEXT_DIM, bg=SURFACE).pack(
             anchor="w", padx=10)
@@ -885,7 +1060,7 @@ class ModGui:
         # ================================================================
         #DYNAMIC CROSSHAIR CARD (movement detection + screen sync)
         # ================================================================
-        dyn_card = self._card(body, "DYNAMIC CROSSHAIR")
+        dyn_card = self._card(tab_frames["OVERLAY"], "DYNAMIC CROSSHAIR")
         tk.Label(dyn_card, text="Movement-reactive bloom & screen-synced rendering",
                  font=("Segoe UI", 8), fg=TEXT_DIM, bg=SURFACE).pack(
             anchor="w", padx=10, pady=(0, 4))
@@ -1001,7 +1176,7 @@ class ModGui:
         # ================================================================
         #OPTIONS CARD
         # ================================================================
-        opt_card = self._card(body, "OPTIONS")
+        opt_card = self._card(tab_frames["TUNING"], "OPTIONS")
         swap_v = tk.BooleanVar(value=self.cfg.swap_abxy)
         hl_v = tk.BooleanVar(value=self.cfg.hair_trigger_left)
         hr_v = tk.BooleanVar(value=self.cfg.hair_trigger_right)
@@ -1019,8 +1194,11 @@ class ModGui:
         ttk.Checkbutton(opt_card, text="Hair trigger RT",
                         variable=hr_v).pack(anchor="w", padx=10, pady=1)
         self._sep(opt_card)
-        ttk.Checkbutton(opt_card, text="HID mode (direct 057e:2069, bypass SDL)",
-                        variable=hid_v).pack(anchor="w", padx=10, pady=(1, 6))
+        ttk.Checkbutton(opt_card, text="Switch 2 HID mode (057e:2069)",
+                         variable=hid_v).pack(anchor="w", padx=10, pady=(1, 6))
+        tk.Label(opt_card, text="DualShock / DualSense / Xbox use SDL automatically.",
+                 font=("Segoe UI", 8), fg=TEXT_DIM, bg=SURFACE).pack(
+            anchor="w", padx=10, pady=(0, 6))
         ttk.Checkbutton(opt_card, text="Auto-start when COD is detected",
                         variable=auto_game_v).pack(anchor="w", padx=10, pady=(1, 6))
 
@@ -1270,17 +1448,20 @@ class ModGui:
                 while True:
                     r = getattr(self, "runner", None)
                     st = getattr(r, "latest_state", None) if r is not None else None
-                    if st is not None and getattr(r, "running", False):
-                        _viz_holder.update(
-                            lx=st.lx, ly=st.ly, rx=st.rx, ry=st.ry,
-                            ads=bool(st.buttons.get("ZL") or st.buttons.get("GL")),
-                            btns=dict(st.buttons), dead=False)
+                    if r is not None and hasattr(r, "reader"):
+                        if st is not None and getattr(r, "running", False):
+                            _viz_holder.update(
+                                lx=st.lx, ly=st.ly, rx=st.rx, ry=st.ry,
+                                ads=bool(st.buttons.get("ZL") or st.buttons.get("GL")),
+                                btns=dict(st.buttons), dead=False)
                         if hr is not None:
                             try:
                                 hr.close()
                             except Exception:
                                 pass
                             hr = None
+                        # The runner may be constructed but not scheduled yet;
+                        # wait for it instead of opening a competing HID handle.
                         time.sleep(0.005)
                         continue
                     if hr is None:

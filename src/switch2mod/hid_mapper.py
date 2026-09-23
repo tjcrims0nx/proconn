@@ -150,16 +150,28 @@ class HidProToXInput:
     def calibrate_gyro(self, samples: int = 60) -> None:
         """Capture stationary gyro bias. Keep the controller still during start."""
         values = []
-        for _ in range(samples):
-            state = self.reader.poll(timeout_ms=50)
-            if state is not None:
-                values.append((state.gyro_x, state.gyro_y))
+        # Once the mapper is running, do not read the HID device here: a
+        # second consumer steals reports from step(). Sample the state already
+        # consumed by the mapper instead. Startup calibration still polls
+        # directly because the run loop has not begun yet.
+        if self.running:
+            for _ in range(samples):
+                state = self.latest_state
+                if state is not None:
+                    values.append((state.gyro_x, state.gyro_y))
+                time.sleep(0.01)
+        else:
+            for _ in range(samples):
+                state = self.reader.poll(timeout_ms=50)
+                if state is not None:
+                    values.append((state.gyro_x, state.gyro_y))
         if values:
             self.gyro_center_x = sum(v[0] for v in values) / len(values)
             self.gyro_center_y = sum(v[1] for v in values) / len(values)
             log.info("gyro bias calibrated x=%+.4f y=%+.4f", self.gyro_center_x, self.gyro_center_y)
-        self.last_input_at = 0.0
-        self.latest_state = None
+        if not self.running:
+            self.last_input_at = 0.0
+            self.latest_state = None
 
     def _drop(self) -> None:
         """Disconnect the controller; run() will keep trying to reconnect."""

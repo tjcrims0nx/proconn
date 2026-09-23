@@ -24,7 +24,7 @@ class RearMap:
 @dataclass
 class AppConfig:
     # identity
-    name: str = "COD - Switch 2 Pro to Xbox (Gamesir-like)"
+    name: str = "ProConn - COD Controller Link"
     description: str = "Optimized for Call of Duty on PC."
     game: str = "cod"  # cod | destiny2
     # connection
