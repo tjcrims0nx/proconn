@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import math
 import shutil
 import subprocess
 import sys
@@ -29,11 +30,78 @@ def log_line(msg: str) -> None:
         pass
 
 
+class RoundedButton(tk.Canvas):
+    """Small theme-stable rounded action button for the installer."""
+    def __init__(self, parent, text: str, command, primary: bool = True, **kwargs):
+        self._text = text
+        self._command = command
+        self._primary = primary
+        self._disabled = False
+        self._hovered = False
+        width = kwargs.pop("width", 150)
+        height = kwargs.pop("height", 42)
+        kwargs.pop("bg", None)
+        super().__init__(parent, width=width, height=height, bg=PANEL,
+                         highlightthickness=0, bd=0, cursor="hand2", **kwargs)
+        self.bind("<Configure>", lambda _event: self._draw())
+        self.bind("<Button-1>", self._click)
+        self.bind("<Enter>", lambda _event: self._set_hover(True))
+        self.bind("<Leave>", lambda _event: self._set_hover(False))
+        self._draw()
+
+    def _set_hover(self, value: bool) -> None:
+        self._hovered = value
+        self._draw()
+
+    def _click(self, _event) -> None:
+        if not self._disabled and self._command:
+            self._command()
+
+    def _draw(self) -> None:
+        self.delete("all")
+        width = max(20, self.winfo_width())
+        height = max(20, self.winfo_height())
+        radius = min(12, height // 2)
+        fill = ("#35505e" if self._disabled else
+                ("#a7f3d0" if self._hovered and self._primary else
+                 (NEON if self._primary else PANEL2)))
+        foreground = BG if self._primary else (TEXT if self._hovered else DIM)
+        points = []
+        for cx, cy, start in ((width - radius, radius, -90),
+                              (width - radius, height - radius, 0),
+                              (radius, height - radius, 90),
+                              (radius, radius, 180)):
+            for step in range(7):
+                angle = math.radians(start + step * 15)
+                points.extend((cx + radius * math.cos(angle),
+                               cy + radius * math.sin(angle)))
+        self.create_polygon(*points, fill=fill, outline="#405866",
+                            width=1, smooth=True)
+        self.create_text(width / 2, height / 2, text=self._text,
+                         fill=foreground, font=("Segoe UI", 10, "bold"))
+
+    def config(self, cnf=None, **kwargs):
+        text = kwargs.pop("text", None)
+        command = kwargs.pop("command", None)
+        state = kwargs.pop("state", None)
+        if text is not None:
+            self._text = text
+        if command is not None:
+            self._command = command
+        if state is not None:
+            self._disabled = state == "disabled"
+        result = super().config(cnf, **kwargs)
+        self._draw()
+        return result
+
+    configure = config
+
+
 class Installer:
     def __init__(self) -> None:
         self.root = tk.Tk()
         self.root.title("ProConn Setup")
-        self.root.geometry("680x560")
+        self.root.geometry("680x640")
         self.root.resizable(False, False)
         self.root.configure(bg=BG)
         icon = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "assets" / "proconn.ico"
@@ -72,9 +140,33 @@ class Installer:
         tk.Label(hero, text="SETUP", font=("Consolas", 8, "bold"),
                  fg=NEON, bg=PANEL2, padx=9, pady=5).pack(side="right", anchor="n")
 
-        panel = tk.Frame(self.root, bg=PANEL, highlightthickness=1,
-                         highlightbackground="#263746")
-        panel.pack(fill="both", expand=True, padx=30, pady=(8, 16))
+        panel_shell = tk.Canvas(self.root, height=450, bg=BG,
+                                highlightthickness=0)
+        panel_shell.pack(fill="both", expand=True, padx=30, pady=(8, 16))
+        panel = tk.Frame(panel_shell, bg=PANEL, bd=0, highlightthickness=0)
+        panel_id = panel_shell.create_window(10, 8, anchor="nw", window=panel)
+
+        def rounded_panel(_event=None):
+            panel_shell.delete("panel-bg")
+            width = max(60, panel_shell.winfo_width() - 2)
+            height = max(60, panel_shell.winfo_height() - 2)
+            radius = 18
+            points = []
+            for cx, cy, start in ((width - radius, radius, -90),
+                                  (width - radius, height - radius, 0),
+                                  (radius, height - radius, 90),
+                                  (radius, radius, 180)):
+                for step in range(7):
+                    angle = math.radians(start + step * 15)
+                    points.extend((cx + radius * math.cos(angle),
+                                   cy + radius * math.sin(angle)))
+            panel_shell.create_polygon(*points, fill=PANEL, outline="#263746",
+                                       width=1, smooth=True, tags="panel-bg")
+            panel_shell.tag_lower("panel-bg")
+            panel_shell.itemconfigure(panel_id, width=max(30, width - 20),
+                                      height=max(30, height - 16))
+
+        panel_shell.bind("<Configure>", rounded_panel)
         tk.Label(panel, text="INSTALLATION STATUS", font=("Consolas", 8, "bold"),
                  fg=DIM, bg=PANEL).pack(anchor="w", padx=20, pady=(14, 0))
         self.canvas = tk.Canvas(panel, width=300, height=210, bg=PANEL,
@@ -86,15 +178,13 @@ class Installer:
         self.detail = tk.Label(panel, text="", font=("Consolas", 8),
                                fg=DIM, bg=PANEL)
         self.detail.pack(pady=5)
-        self.button = tk.Button(panel, text="INSTALL", command=self.start,
-                                font=("Segoe UI", 11, "bold"), fg=BG, bg=NEON,
-                                activebackground="#a7f3d0", relief="flat", bd=0,
-                                padx=34, pady=9, cursor="hand2")
+        self.button = RoundedButton(panel, text="INSTALL", command=self.start,
+                                    primary=True, width=180, height=44,
+                                    bg=PANEL)
         self.button.pack(pady=14)
-        self.close_button = tk.Button(panel, text="CLOSE", command=self.close,
-                                      font=("Segoe UI", 8), fg=DIM, bg=BG,
-                                      activeforeground=TEXT, activebackground=BG,
-                                      relief="flat", bd=0, cursor="hand2")
+        self.close_button = RoundedButton(panel, text="CLOSE", command=self.close,
+                                          primary=False, width=120, height=34,
+                                          bg=PANEL)
         self.close_button.pack()
 
     def _animate(self) -> None:
@@ -139,13 +229,15 @@ class Installer:
             # FOLDER CONTENTS into payload/ (no nested Switch2ProMod dir),
             # but tolerate both layouts.
             nested = bundle / "Switch2ProMod"
-            if (nested / "Switch2ProMod.exe").exists():
+            if (nested / "ProConn.exe").exists() or (nested / "Switch2ProMod.exe").exists():
                 source = nested
-            elif (bundle / "Switch2ProMod.exe").exists():
+            elif (bundle / "ProConn.exe").exists() or (bundle / "Switch2ProMod.exe").exists():
                 source = bundle
             else:
                 raise RuntimeError(f"Payload missing: {bundle}")
-            self._install_dir = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Switch2ProMod"
+            # Use the rebranded directory so an older Switch2ProMod install
+            # can never be mistaken for the freshly installed ProConn build.
+            self._install_dir = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ProConn"
             self._pending = [(p, self._install_dir / p.relative_to(source))
                              for p in source.rglob("*") if p.is_file()]
             self._pending_total = max(1, len(self._pending))
@@ -155,9 +247,10 @@ class Installer:
                 self._set_progress("Removing previous version",
                                    "Closing old app and cleaning...", 0.05)
                 try:
-                    subprocess.run(["taskkill", "/F", "/IM", "Switch2ProMod.exe"],
-                                   capture_output=True, timeout=15,
-                                   creationflags=subprocess.CREATE_NO_WINDOW)
+                    for process_name in ("Switch2ProMod.exe", "ProConn.exe"):
+                        subprocess.run(["taskkill", "/F", "/IM", process_name],
+                                       capture_output=True, timeout=15,
+                                       creationflags=subprocess.CREATE_NO_WINDOW)
                 except Exception as e:
                     log_line("taskkill: " + str(e))
                 try:
@@ -207,7 +300,7 @@ class Installer:
 
     def _make_shortcut(self) -> None:
         try:
-            exe = self._install_dir / "Switch2ProMod.exe"
+            exe = self._install_dir / "ProConn.exe"
             shortcut = (Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" /
                         "Start Menu" / "Programs" / "ProConn.lnk")
             shortcut.parent.mkdir(parents=True, exist_ok=True)
@@ -255,7 +348,9 @@ class Installer:
         self.button.config(state="normal", text="RETRY", command=self.start)
 
     def launch(self) -> None:
-        path = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Switch2ProMod" / "Switch2ProMod.exe"
+        path = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ProConn" / "ProConn.exe"
+        if not path.exists():
+            path = path.with_name("Switch2ProMod.exe")
         if path.exists():
             subprocess.Popen([str(path), "--hid", "--gui"], cwd=str(path.parent))
             self.root.destroy()

@@ -49,7 +49,7 @@ jobs:
       - name: Build Windows EXE (PyInstaller)
         run: |
           pyinstaller --onefile --windowed ^
-            --name "Switch2ProMod" ^
+            --name "ProConn" ^
             --icon assets/proconn.ico ^
             --exclude-module vgamepad ^
             --add-data "assets;assets" ^
@@ -74,7 +74,7 @@ jobs:
       - name: Build Console EXE (no --windowed, for debugging)
         run: |
           pyinstaller --onefile ^
-            --name "Switch2ProMod-console" ^
+            --name "ProConn-console" ^
             --icon assets/proconn.ico ^
             --exclude-module vgamepad ^
             --add-data "assets;assets" ^
@@ -99,16 +99,16 @@ jobs:
       - name: Verify build
         run: |
           dir dist\
-          dist\Switch2ProMod-console.exe --selftest || echo "selftest reported issues"
-          dist\Switch2ProMod-console.exe --list || echo "No controller connected (expected in CI)"
+           dist\ProConn-console.exe --selftest || echo "selftest reported issues"
+           dist\ProConn-console.exe --list || echo "No controller connected (expected in CI)"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Switch2ProMod-Windows-x64
+           name: ProConn-Windows-x64
           path: |
-            dist/Switch2ProMod.exe
-            dist/Switch2ProMod-console.exe
+             dist/ProConn.exe
+             dist/ProConn-console.exe
             cod_profile.json
             destiny2_profile.json
           retention-days: 30

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/tjcrims0nx/switch2-pro-mod/actions"><img src="https://github.com/tjcrims0nx/switch2-pro-mod/actions/workflows/windows-build.yml/badge.svg" alt="Build"></a>
+  <a href="https://github.com/tjcrims0nx/proconn/actions"><img src="https://github.com/tjcrims0nx/proconn/actions/workflows/windows-build.yml/badge.svg" alt="Build"></a>
   <img src="https://img.shields.io/badge/platform-Windows-0078d4?logo=windows" alt="Windows">
   <img src="https://img.shields.io/badge/python-3.10%2B-3776ab?logo=python&logoColor=white" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/license-MIT-00ff41" alt="License">
@@ -68,8 +68,8 @@ It's not just a remapper. It's a **full competitive tuning suite** inspired by G
 ### Install
 
 ```bash
-git clone https://github.com/tjcrims0nx/switch2-pro-mod.git
-cd switch2-pro-mod
+git clone https://github.com/tjcrims0nx/proconn.git
+cd proconn
 pip install -r requirements.txt
 ```
 
@@ -104,7 +104,7 @@ python app.py --wired --calibrate
 
 ### Or Download the EXE
 
-Grab `Switch2ProMod.exe` from [Releases](https://github.com/tjcrims0nx/switch2-pro-mod/releases) — no Python install needed.
+Grab `ProConn.exe` or `ProConnSetup.exe` from [Releases](https://github.com/tjcrims0nx/proconn/releases) — no Python install needed.
 
 ---
 

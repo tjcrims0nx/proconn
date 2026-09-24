@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import sys
 import threading
 import time
 from pathlib import Path
@@ -163,6 +164,18 @@ class ModGui:
         root.geometry("1180x760")
         root.minsize(900, 600)
         root.configure(bg=BG)
+        asset_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2])) / "assets"
+        icon_path = asset_root / "proconn.ico"
+        if icon_path.exists():
+            try:
+                root.iconbitmap(str(icon_path))
+            except Exception:
+                pass
+        try:
+            self._window_icon = tk.PhotoImage(file=str(asset_root / "logo.png"))
+            root.iconphoto(True, self._window_icon)
+        except Exception as e:
+            log.debug("window logo unavailable: %s", e)
 
         # -- ttk theme / style -------------------------------------------
         style = ttk.Style(root)
@@ -205,6 +218,72 @@ class ModGui:
         style.map("Vertical.TScrollbar",
                   background=[("active", NEON_DIM)])
 
+        class ModernButton(tk.Canvas):
+            """Theme-stable rounded action control for the dashboard."""
+            def __init__(self, parent, text, command, primary=False, width=150, height=34):
+                self._text = text
+                self._command = command
+                self._primary = primary
+                self._disabled = False
+                self._hovered = False
+                super().__init__(parent, width=width, height=height, bg=SURFACE,
+                                 highlightthickness=0, bd=0, cursor="hand2")
+                self.bind("<Configure>", lambda _event: self._draw())
+                self.bind("<Button-1>", self._click)
+                self.bind("<Enter>", lambda _event: self._set_hover(True))
+                self.bind("<Leave>", lambda _event: self._set_hover(False))
+                self._draw()
+
+            def _set_hover(self, value):
+                self._hovered = value
+                self._draw()
+
+            def _click(self, _event):
+                if not self._disabled and self._command:
+                    self._command()
+
+            def _draw(self):
+                self.delete("all")
+                width = max(24, self.winfo_width())
+                height = max(20, self.winfo_height())
+                radius = min(10, height // 2)
+                fill = ("#344b5a" if self._disabled else
+                        ("#a7f3d0" if self._hovered and self._primary else
+                         (NEON if self._primary else SURFACE2)))
+                foreground = BG if self._primary else (TEXT if self._hovered else TEXT_DIM)
+                points = []
+                for cx, cy, start in ((width - radius, radius, -90),
+                                      (width - radius, height - radius, 0),
+                                      (radius, height - radius, 90),
+                                      (radius, radius, 180)):
+                    for step in range(7):
+                        angle = math.radians(start + step * 15)
+                        points.extend((cx + radius * math.cos(angle),
+                                       cy + radius * math.sin(angle)))
+                self.create_polygon(*points, fill=fill, outline=BORDER,
+                                    width=1, smooth=True)
+                self.create_text(width / 2, height / 2, text=self._text,
+                                 fill=foreground, font=("Segoe UI", 8, "bold"))
+
+            def config(self, cnf=None, **kwargs):
+                text = kwargs.pop("text", None)
+                command = kwargs.pop("command", None)
+                state = kwargs.pop("state", None)
+                for ignored in ("fg", "bg", "activeforeground", "activebackground",
+                                "highlightbackground", "relief", "bd"):
+                    kwargs.pop(ignored, None)
+                if text is not None:
+                    self._text = text
+                if command is not None:
+                    self._command = command
+                if state is not None:
+                    self._disabled = state == "disabled"
+                result = super().config(cnf, **kwargs)
+                self._draw()
+                return result
+
+            configure = config
+
         # -- scrollable body ---------------------------------------------
         outer = tk.Frame(root, bg=BG)
         outer.pack(fill="both", expand=True)
@@ -219,8 +298,17 @@ class ModGui:
                                  highlightthickness=0)
         top_gradient.pack(side="bottom", fill="x")
 
+        logo_path = asset_root / "logo.png"
+        try:
+            logo_source = tk.PhotoImage(file=str(logo_path))
+            factor = max(1, logo_source.width() // 38)
+            self._logo_image = logo_source.subsample(factor, factor)
+            tk.Label(topbar, image=self._logo_image, bg=APPBAR).pack(
+                side="left", padx=(18, 0), pady=13)
+        except Exception as e:
+            log.debug("app logo unavailable: %s", e)
         brand = tk.Frame(topbar, bg=APPBAR)
-        brand.pack(side="left", padx=18, pady=10)
+        brand.pack(side="left", padx=(10, 18), pady=10)
         tk.Label(brand, text="PROCONN", font=("Segoe UI", 14, "bold"),
                  fg=NEON, bg=APPBAR).pack(anchor="w")
         tk.Label(brand, text="CONTROLLER LINK  /  LOCAL DEV",
@@ -616,16 +704,10 @@ class ModGui:
             except Exception as e:
                 set_status(f"joy.cpl failed: {e}", ACCENT_ERR)
 
-        tk.Button(proof_btns, text="TEST CROSSHAIR",
-                  command=test_crosshair_now, font=("Segoe UI", 8, "bold"),
-                  fg=BG, bg=NEON, activebackground=ACCENT2,
-                  relief="flat", bd=0, padx=10, pady=5,
-                  cursor="hand2").pack(side="left", padx=(0, 6))
-        tk.Button(proof_btns, text="OPEN joy.cpl (verify virtual pad)",
-                  command=open_joycpl, font=("Segoe UI", 8),
-                  fg=TEXT, bg=SURFACE2, activeforeground=NEON,
-                  activebackground=BORDER, relief="flat", bd=0,
-                  padx=10, pady=5, cursor="hand2").pack(side="left")
+        ModernButton(proof_btns, "TEST CROSSHAIR", test_crosshair_now,
+                     primary=True, width=150).pack(side="left", padx=(0, 6))
+        ModernButton(proof_btns, "OPEN joy.cpl", open_joycpl,
+                     width=180).pack(side="left")
         def is_admin() -> bool:
             try:
                 import ctypes
@@ -676,11 +758,8 @@ class ModGui:
             except Exception as e:
                 set_status(f"Driver install failed: {e}", ACCENT_ERR)
 
-        install_btn = tk.Button(proof_btns, text="INSTALL DRIVER (only if missing)",
-                                command=install_driver, font=("Segoe UI", 8),
-                                fg=TEXT, bg=SURFACE2, activeforeground=NEON,
-                                activebackground=BORDER, relief="flat", bd=0,
-                                padx=10, pady=5, cursor="hand2")
+        install_btn = ModernButton(proof_btns, "INSTALL DRIVER", install_driver,
+                                   width=170)
         install_btn.pack(side="left", padx=(6, 0))
         try:
             refresh_driver_label()
@@ -729,11 +808,8 @@ class ModGui:
             except Exception as e:
                 set_status(f"Admin relaunch failed: {e}", ACCENT_ERR)
 
-        tk.Button(proof_btns, text="RESTART AS ADMIN",
-                  command=restart_admin, font=("Segoe UI", 8),
-                  fg=TEXT, bg=SURFACE2, activeforeground=NEON,
-                  activebackground=BORDER, relief="flat", bd=0,
-                  padx=10, pady=5, cursor="hand2").pack(side="left", padx=(6, 0))
+        ModernButton(proof_btns, "RESTART AS ADMIN", restart_admin,
+                     width=150).pack(side="left", padx=(6, 0))
         tk.Label(proof_card,
                  text="COD: Settings -> Graphics -> Display Mode -> Fullscreen Borderless.\n"
                       "Exclusive Fullscreen hides ALL overlays. Match admin level with the game.",
@@ -826,12 +902,8 @@ class ModGui:
             state["hair_threshold"].set(preset.hair_threshold)
             set_status("Legit Max preset loaded - manual input only", NEON)
 
-        tk.Button(aim_card, text="Load Legit Max preset",
-                  command=apply_legit_max, font=("Segoe UI", 8),
-                  fg=TEXT, bg=SURFACE2, activeforeground=NEON,
-                  activebackground=BORDER, relief="flat", bd=0,
-                  padx=10, pady=5, cursor="hand2").pack(anchor="w", padx=10,
-                                                         pady=(3, 6))
+        ModernButton(aim_card, "LOAD LEGIT MAX PRESET", apply_legit_max,
+                     width=205).pack(anchor="w", padx=10, pady=(3, 6))
 
         self._sep(aim_card)
         derived = tk.Label(aim_card, text="", font=("Consolas", 8),
@@ -952,17 +1024,13 @@ class ModGui:
 
         for _txt, _dx, _dy in (("<", -5, 0), (">", 5, 0),
                                ("^", 0, -5), ("v", 0, 5)):
-            tk.Button(nudge_row, text=_txt, command=lambda dx=_dx, dy=_dy: _nudge(dx, dy),
-                      font=("Segoe UI", 9, "bold"), fg=TEXT, bg=SURFACE2,
-                      activeforeground=NEON, activebackground=BORDER,
-                      relief="flat", bd=0, width=3, cursor="hand2").grid(
+            ModernButton(nudge_row, _txt, lambda dx=_dx, dy=_dy: _nudge(dx, dy),
+                         width=34, height=28).grid(
                 row={"<": 1, ">": 1, "^": 0, "v": 2}[_txt],
                 column={"<": 0, ">": 2, "^": 1, "v": 1}[_txt], padx=2, pady=1)
-        tk.Button(nudge_row, text="center", command=lambda: _nudge(
+        ModernButton(nudge_row, "CENTER", lambda: _nudge(
             -int(self.cfg.crosshair.offset_x), -int(self.cfg.crosshair.offset_y)),
-            font=("Segoe UI", 8), fg=TEXT_DIM, bg=SURFACE,
-            activeforeground=NEON, relief="flat", bd=0,
-            cursor="hand2").grid(row=1, column=3, padx=6)
+            width=76, height=28).grid(row=1, column=3, padx=6)
 
         # -- live crosshair shape preview ---------------------------------
         self._sep(xh_card)
@@ -1236,20 +1304,14 @@ class ModGui:
         act_frame = tk.Frame(body, bg=BG)
         act_frame.pack(fill="x", padx=14, pady=(10, 4))
 
-        # START button - large neon
-        start_btn = tk.Button(
-            act_frame, text=">  Start controller", font=("Segoe UI", 10),
-            fg=BG, bg=NEON, activeforeground=BG, activebackground=ACCENT2,
-            bd=0, padx=18, pady=7, cursor="hand2", relief="flat")
+        # START button - primary enterprise action
+        start_btn = ModernButton(act_frame, ">  START CONTROLLER", None,
+                                 primary=True, width=240, height=42)
         start_btn.pack(fill="x", pady=(0, 6))
 
-        # STOP button - outlined
-        stop_btn = tk.Button(
-            act_frame, text="*  Stop", font=("Segoe UI", 9),
-            fg=TEXT_DIM, bg=SURFACE, activeforeground=TEXT,
-            activebackground=SURFACE2, bd=0, padx=16, pady=6,
-            cursor="hand2", relief="flat",
-            highlightbackground=BORDER, highlightthickness=1)
+        # STOP button - secondary action
+        stop_btn = ModernButton(act_frame, "*  STOP", None,
+                                width=240, height=36)
         stop_btn.pack(fill="x")
 
         # Hover effects
