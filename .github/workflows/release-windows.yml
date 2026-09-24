@@ -33,7 +33,7 @@ jobs:
 
       - name: Build EXE
         run: >-
-          pyinstaller --noconfirm --clean --windowed --name ProConn
+          pyinstaller --noconfirm --clean --onefile --windowed --name ProConn
           --icon assets/proconn.ico --add-data "assets;assets"
           --paths src --collect-all pygame
           --exclude-module vgamepad
