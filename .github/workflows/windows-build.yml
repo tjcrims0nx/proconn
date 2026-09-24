@@ -99,16 +99,16 @@ jobs:
       - name: Verify build
         run: |
           dir dist\
-           dist\ProConn-console.exe --selftest || echo "selftest reported issues"
-           dist\ProConn-console.exe --list || echo "No controller connected (expected in CI)"
+          dist\ProConn-console.exe --selftest || echo "selftest reported issues"
+          dist\ProConn-console.exe --list || echo "No controller connected (expected in CI)"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-           name: ProConn-Windows-x64
+          name: ProConn-Windows-x64
           path: |
-             dist/ProConn.exe
-             dist/ProConn-console.exe
+            dist/ProConn.exe
+            dist/ProConn-console.exe
             cod_profile.json
             destiny2_profile.json
           retention-days: 30
