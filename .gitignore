@@ -12,3 +12,4 @@ controller_samples/stick_capture_status.json
 *.tmp
 
 *.spec
+MEMORY.md
