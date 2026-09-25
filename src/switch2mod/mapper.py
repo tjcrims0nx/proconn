@@ -7,6 +7,7 @@ import time
 import pygame
 
 from switch2mod.config import AppConfig
+from switch2mod.detection import controller_family
 from switch2mod.sticks import Smoother, ensure_sprint_magnitude, process_sticks, to_s16, update_ads_state, update_sprint_latch
 
 log = logging.getLogger("switch2mod.mapper")
@@ -36,6 +37,24 @@ BTN = {
     "gl": 18, "gr": 19, "c_btn": 20,
 }
 
+# SDL joystick button orders differ across controller families. These maps
+# normalize common Xbox and PlayStation layouts into the existing semantic
+# names used by the mapper.
+BTN_XBOX = {
+    "B_bottom": 1, "A_right": 0, "Y_left": 3, "X_top": 2,
+    "minus": 6, "home": 8, "plus": 7, "L3": 9, "R3": 10,
+    "LB": 4, "RB": 5, "ZL_btn": 11, "ZR_btn": 12, "capture": -1,
+    "gl": -1, "gr": -1, "c_btn": -1,
+    "dpad_up": -1, "dpad_down": -1, "dpad_left": -1, "dpad_right": -1,
+}
+BTN_DUALSENSE = {
+    "B_bottom": 1, "A_right": 0, "Y_left": 3, "X_top": 2,
+    "minus": 8, "home": 12, "plus": 9, "L3": 10, "R3": 11,
+    "LB": 4, "RB": 5, "ZL_btn": 6, "ZR_btn": 7, "capture": 13,
+    "gl": -1, "gr": -1, "c_btn": -1,
+    "dpad_up": -1, "dpad_down": -1, "dpad_left": -1, "dpad_right": -1,
+}
+
 
 class MapperError(Exception):
     pass
@@ -52,8 +71,14 @@ class ProToXInput:
         self.cfg = cfg.apply_aim_dial()
         self.joy = pygame.joystick.Joystick(joy_index)
         self.joy.init()
+        self.controller_family = controller_family(self.joy.get_name())
+        self.btn_map = {
+            "xbox": BTN_XBOX,
+            "dualshock": BTN_DUALSENSE,
+        }.get(self.controller_family, BTN)
         log.info("input: %s axes=%d btns=%d", self.joy.get_name(),
                  self.joy.get_numaxes(), self.joy.get_numbuttons())
+        log.info("controller family: %s (SDL mapping)", self.controller_family)
         self.pad = vg.VX360Gamepad()
         self.running = False
         self.connected = True
@@ -112,7 +137,9 @@ class ProToXInput:
         log.info("center L(%+.3f,%+.3f) R(%+.3f,%+.3f)", *vals)
 
     def _btn(self, key: str) -> bool:
-        i = BTN[key]
+        i = self.btn_map.get(key, -1)
+        if i < 0:
+            return False
         try:
             return self.joy.get_numbuttons() > i and bool(self.joy.get_button(i))
         except pygame.error:
@@ -128,10 +155,12 @@ class ProToXInput:
             if na >= 6:
                 lt = (self.joy.get_axis(4) + 1.0) / 2.0
                 rt = (self.joy.get_axis(5) + 1.0) / 2.0
-            if nb > max(BTN["ZL_btn"], BTN["ZR_btn"]):
-                if self.joy.get_button(BTN["ZL_btn"]):
+            zl_idx = self.btn_map.get("ZL_btn", -1)
+            zr_idx = self.btn_map.get("ZR_btn", -1)
+            if nb > max(zl_idx, zr_idx):
+                if zl_idx >= 0 and self.joy.get_button(zl_idx):
                     lt = 1.0
-                if self.joy.get_button(BTN["ZR_btn"]):
+                if zr_idx >= 0 and self.joy.get_button(zr_idx):
                     rt = 1.0
             return max(0.0, min(1.0, lt)), max(0.0, min(1.0, rt))
         except pygame.error:
@@ -163,6 +192,8 @@ class ProToXInput:
         du, dd = self._btn("dpad_up"), self._btn("dpad_down")
         dl, dr = self._btn("dpad_left"), self._btn("dpad_right")
         def raw_btn(idx: int) -> bool:
+            if idx < 0:
+                return False
             try:
                 nb = self.joy.get_numbuttons()
                 return bool(self.joy.get_button(idx)) if nb > idx else False
@@ -171,10 +202,10 @@ class ProToXInput:
             except Exception:
                 return False
 
-        capture = raw_btn(BTN["capture"])
-        gl = raw_btn(BTN["gl"])
-        gr = raw_btn(BTN["gr"])
-        c_btn = raw_btn(BTN["c_btn"])
+        capture = raw_btn(self.btn_map.get("capture", -1))
+        gl = raw_btn(self.btn_map.get("gl", -1))
+        gr = raw_btn(self.btn_map.get("gr", -1))
+        c_btn = raw_btn(self.btn_map.get("c_btn", -1))
 
         if self.joy.get_numhats() > 0:
             try:

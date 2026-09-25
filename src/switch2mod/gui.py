@@ -1473,8 +1473,10 @@ class ModGui:
                     color = NEON if top.is_pro else ACCENT_WARN
                     dot.itemconfig(dot_id, fill=color)
                     dot.itemconfig(glow_id, outline=color)
+                    family = getattr(top, "family", "generic").upper()
                     conn_label.config(
-                        text=f"{top.name[:32]}  |  {top.bus}  vid={top.vid}  pid={top.pid}",
+                        text=f"{family}  |  {top.name[:28]}  |  {top.bus}  "
+                             f"vid={top.vid}  pid={top.pid}",
                         fg=TEXT)
                     hid_badge.config(text=" SDL ", bg=NEON_DIM, fg=BG)
                 else:

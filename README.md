@@ -41,7 +41,7 @@ It's not just a remapper. It's a **full competitive tuning suite** inspired by G
 | **ABXY Swap** | Nintendo ↔ Xbox layout swap (fixes in-game prompts) |
 | **Response Curves** | Linear, Aggressive, Precise, Raw — per-game tuning |
 | **ADS Damping** | Separate aim sensitivity while scoped |
-| **Multi-controller support** | Switch 2 Pro HID plus DualShock, DualSense, and Xbox via SDL |
+| **Multi-controller support (beta)** | Switch 2 Pro HID plus DualShock, DualSense, and Xbox via SDL |
 | **HID Direct Mode** | Bypasses SDL for Switch 2 Pro (057e:2069) detection |
 | **Dark Neon GUI** | Enterprise-grade interface with live stick visualizer |
 | **Auto-Reconnect** | Cable bumps? Reconnects in 1-2s, no restart needed |
@@ -51,7 +51,11 @@ It's not just a remapper. It's a **full competitive tuning suite** inspired by G
 ## 📸 Screenshots
 
 <p align="center">
-  <em>Neon green/black dark theme with card-based layout, live stick visualizer, and crosshair preview</em>
+  <img src="assets/proconn-ui.png" alt="ProConn enterprise controller dashboard" width="100%">
+</p>
+
+<p align="center">
+  <em>ProConn enterprise dashboard with Monitor, Tuning, and Overlay workspaces, live stick telemetry, and controller status.</em>
 </p>
 
 ---

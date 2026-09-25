@@ -288,3 +288,21 @@ def test_no_automatic_aim():
     offenders = [line for line in r.stdout.splitlines()
                  if line != "tests/test_sticks.py"]
     assert not offenders, "Automatic-aim code detected: " + ", ".join(offenders)
+
+
+def test_common_sdl_controller_families_are_classified():
+    from switch2mod.detection import controller_family
+    assert controller_family("Xbox 360 Controller", "045e") == "xbox"
+    assert controller_family("DualSense Wireless Controller", "054c") == "dualshock"
+    assert controller_family("Nintendo Switch Pro Controller", "057e") == "switch-pro"
+
+
+def test_sdl_family_button_maps_use_standard_face_order():
+    from switch2mod.mapper import BTN_DUALSENSE, BTN_XBOX
+    # A/B/X/Y are the standard SDL face order for Xbox and PlayStation pads.
+    for mapping in (BTN_XBOX, BTN_DUALSENSE):
+        assert mapping["A_right"] == 0
+        assert mapping["B_bottom"] == 1
+        assert mapping["X_top"] == 2
+        assert mapping["Y_left"] == 3
+        assert mapping["LB"] == 4 and mapping["RB"] == 5
