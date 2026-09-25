@@ -1,7 +1,7 @@
 # AGENT MEMORY — Switch 2 Pro Controller Mod (`switch2mod`)
 
 > Read this first. Verified hardware facts, architecture rules, hard
-> refusals, and exactly what is open right now. Updated 2026-09-23.
+> refusals, and exactly what is open right now. Updated 2026-09-24.
 
 ## 1. What this project is
 
@@ -21,7 +21,7 @@ status toast). Input reshaping only — see §7 hard refusals.
   (primary path), `rear.py`, `crosshair.py`, `status_toast.py`, `gui.py`,
   `procon2_enable.py`, `logging_setup.py`.
 - Tests: `tests/test_sticks.py` — keep green (currently 15-16 passing).
-- Repo: `github.com/tjcrims0nx/switch2-pro-mod`, branch `master`.
+- Repo: `github.com/tjcrims0nx/proconn`, branch `master`.
 - Profiles: `cod_profile.json` (user runs AIM 100, GL→LT, GR→RT),
   `destiny2_profile.json`.
 - Releases: tag `v*` → `release-windows.yml` builds EXE + installer asset.
@@ -122,6 +122,15 @@ status toast). Input reshaping only — see §7 hard refusals.
    re-targeting path, dispatcher-join exit, historical debug-plane
    owner-check gaps). Awaiting user's next input; unless they reverse, the
    codebase stays clean per §7.
+8. **Crosshair reliability regression** — user reports app freezes/crashes and
+   the crosshair disappears or stops working. Inspect Tk overlay lifecycle,
+   repeated `_redraw()` scheduling, `pulse()` calls, and start/stop/live-apply
+   teardown. Do not assume this is a hardware issue; reproduce with the
+   overlay enabled and no controller first.
+9. **Installer/app identity cleanup** — stale `Switch2ProMod.exe` installs and
+   Windows icon caching caused the legacy UX and feather icon to reappear. The
+   current local identity is `%LOCALAPPDATA%\ProConn\ProConn.exe`; installer
+   payload must contain `ProConn.exe`, not the old executable.
 
 ## 5. Environment gotchas
 
@@ -179,7 +188,39 @@ only on manual Capture press or real ADS + real stick motion.
 - Commit style: `git -c user.name=... -c user.email=...` per command (never
   set global config). Push to master; tag `v*` only when user asks for a
   release (triggers CI EXE + installer asset build).
-- **Agent handoff, 2026-09-23 session:** user asked to turn this codebase
+- **Current branding/build state, 2026-09-24:** GitHub repository is now
+  `tjcrims0nx/proconn`. User-facing app/installer branding is ProConn. Generated
+  assets are `assets/proconn-logo.svg`, `assets/proconn.ico`, and the valid PNG
+  `assets/logo.png`. The GUI uses the icon plus in-app logo, slate enterprise
+  surfaces, rounded cards, rounded buttons, custom modern sliders, and a
+  persistent Monitor/Tuning/Overlay navigation rail.
+- **Controller support, 2026-09-24:** Switch 2 Pro uses direct HID; DualShock,
+  DualSense, and Xbox controllers use the SDL mapper. Detection labels those
+  families instead of reporting every non-Nintendo pad as generic.
+- **Installer state, 2026-09-24:** installer UI has rounded panels/buttons and
+  uses a clean `%LOCALAPPDATA%\ProConn` install directory. It removes old
+  `Switch2ProMod`/legacy ProConn installs when run and creates `ProConn.lnk`.
+  Latest local builds used names `dist/ProConn.exe` and
+  `dist/ProConnSetup-final5.exe`; release workflow builds `ProConn.exe` and
+  `ProConnSetup.exe`.
+- **Release state, 2026-09-24:** commit `15d5b10` finalized branding and
+  installer work; commit `19769cb` fixed workflow YAML; commit `6fbe0dc`
+  aligned release app packaging with the installer. Tag `v0.0.2` is published
+  at `https://github.com/tjcrims0nx/proconn/releases/tag/v0.0.2` with
+  `ProConnSetup.exe`. Windows Build and Windows Release both passed after the
+  packaging fix.
+- **Latest verification:** local suite is `25 passed`; frozen self-tests pass;
+  HID detection found the live `057e:2069` pad and `--hid-calibrate` streamed
+  reports/stick values while COD was running. Standalone `--crosshair` logged
+  `crosshair overlay shown` successfully. Two duplicate ProConn processes were
+  found during verification and replaced with one clean mapper instance; this
+  was a likely freeze source. Physical gyro motion and in-game overlay motion
+  response still need a manual stick/gyro movement pass.
+- **Crosshair hardening, 2026-09-26:** `CrosshairOverlay` now tracks one Tk
+  redraw callback, cancels pending callbacks before manual pulses, restarts
+  redraw safely after show, and cancels timers during close. Automated tests
+  remain green; hardware/overlay-in-game verification is still pending.
+- **Agent handoff, 2026-09-23:** user asked to turn this codebase
   into an aimbot with screen-analysis target detection and "antiban," plus
   a Warzone-styled GUI cleanup. The aimbot request was DECLINED and that is
   the standing position: target detection via screen pixels, "antiban"

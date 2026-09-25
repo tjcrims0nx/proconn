@@ -247,6 +247,7 @@ class CrosshairOverlay:
         self._last_frame = time.monotonic()
         self._retarget_n = 0
         self._pulse_until = 0.0
+        self._after_id = None
 
     # -- drawing ----------------------------------------------------------
 
@@ -299,7 +300,8 @@ class CrosshairOverlay:
     # -- main frame -------------------------------------------------------
 
     def _redraw(self) -> None:
-        if not self.canvas:
+        self._after_id = None
+        if not self.canvas or not self.win:
             return
 
         now = time.monotonic()
@@ -410,19 +412,25 @@ class CrosshairOverlay:
     def pulse(self, duration: float = 0.45) -> None:
         """Pulse after an explicit manual mark button. No target detection."""
         self._pulse_until = max(self._pulse_until, time.monotonic() + duration)
+        try:
+            if self.win and self._after_id is not None:
+                self.win.after_cancel(self._after_id)
+                self._after_id = None
+        except Exception:
+            self._after_id = None
         self._redraw()
 
     def _schedule(self) -> None:
         try:
-            if self.win:
+            if self.win and self._after_id is None:
                 # Re-anchor to the target game window ~1/sec (it can move).
                 self._retarget_n += 1
                 if self._retarget_n >= max(1, int(1000 / max(1, self._tick_ms))):
                     self._retarget_n = 0
                     self._place_box()
-                self.win.after(self._tick_ms, self._redraw)
+                self._after_id = self.win.after(self._tick_ms, self._redraw)
         except Exception:
-            pass
+            self._after_id = None
 
     # -- lifecycle --------------------------------------------------------
 
@@ -441,6 +449,10 @@ class CrosshairOverlay:
         if self.win is not None:
             try:
                 self.win.deiconify()
+                self.win.lift()
+                self.set_locked(self.locked)
+                if self._after_id is None:
+                    self._redraw()
                 return True
             except Exception:
                 self.win = None
@@ -611,6 +623,12 @@ class CrosshairOverlay:
             pass
 
     def close(self) -> None:
+        try:
+            if self.win and self._after_id is not None:
+                self.win.after_cancel(self._after_id)
+        except Exception:
+            pass
+        self._after_id = None
         try:
             if self.win:
                 self.win.destroy()

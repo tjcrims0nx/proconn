@@ -17,11 +17,11 @@
   },
   "crosshair": {
     "enabled": true,
-    "style": "cross_dot",
+    "style": "diamond",
     "size": 8,
     "gap": 5,
     "thickness": 2,
-    "color": "yellow",
+    "color": "magenta",
     "opacity": 0.9,
     "center_dot": true,
     "dot_size": 2,
@@ -44,7 +44,7 @@
     "target_fps": 0
   },
   "aim_assist": 100.0,
-  "ads_damping": 0.7,
+  "ads_damping": 1.0,
   "ads_recenter_enabled": true,
   "ads_recenter_speed": 10.0,
   "smoothing": 0.1525,
