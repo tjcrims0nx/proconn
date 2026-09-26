@@ -186,6 +186,10 @@ class Installer:
                                           primary=False, width=120, height=34,
                                           bg=PANEL)
         self.close_button.pack()
+        self.uninstall_button = RoundedButton(
+            panel, text="UNINSTALL PROCONN", command=self.uninstall,
+            primary=False, width=190, height=32, bg=PANEL)
+        self.uninstall_button.pack(pady=(8, 12))
 
     def _animate(self) -> None:
         self.canvas.delete("all")
@@ -354,6 +358,50 @@ class Installer:
         if path.exists():
             subprocess.Popen([str(path), "--hid", "--gui"], cwd=str(path.parent))
             self.root.destroy()
+
+    def uninstall(self) -> None:
+        """Remove current and legacy installs without touching user profiles."""
+        from tkinter import messagebox
+        if not messagebox.askyesno(
+                "Uninstall ProConn",
+                "Remove ProConn and legacy Switch2ProMod installs?\n\n"
+                "Profiles and source files will not be deleted."):
+            return
+        self.cancel_event.set()
+        self.running = False
+        failures = []
+        for process_name in ("ProConn.exe", "Switch2ProMod.exe"):
+            try:
+                subprocess.run(["taskkill", "/F", "/IM", process_name],
+                               capture_output=True, timeout=15,
+                               creationflags=subprocess.CREATE_NO_WINDOW)
+            except Exception as e:
+                failures.append(f"{process_name}: {e}")
+        local = Path(os.environ.get("LOCALAPPDATA", Path.home()))
+        for folder in (local / "ProConn", local / "Switch2ProMod"):
+            try:
+                if folder.exists():
+                    shutil.rmtree(folder)
+            except Exception as e:
+                failures.append(f"{folder.name}: {e}")
+        shortcut_dir = Path(os.environ.get("APPDATA", Path.home())) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
+        for name in ("ProConn.lnk", "Switch 2 Pro Mod.lnk"):
+            try:
+                shortcut = shortcut_dir / name
+                if shortcut.exists():
+                    shortcut.unlink()
+            except Exception as e:
+                failures.append(f"{name}: {e}")
+        if failures:
+            self.status.config(text="Uninstall completed with warnings", fg=WARN)
+            self.detail.config(text="; ".join(failures)[:120])
+            log_line("uninstall warnings: " + "; ".join(failures))
+        else:
+            self.status.config(text="ProConn uninstalled", fg=NEON)
+            self.detail.config(text="Install folders and shortcuts removed")
+            log_line("uninstall completed")
+        self.button.config(state="normal", text="INSTALL", command=self.start)
+        self.uninstall_button.config(state="disabled")
 
     def close(self) -> None:
         self.cancel_event.set()
